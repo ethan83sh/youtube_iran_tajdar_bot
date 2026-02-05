@@ -1,6 +1,6 @@
 import re
 from telegram.ext import Application, CallbackQueryHandler, CommandHandler
-
+from bot.conversations import add_link
 from bot import menus
 from bot.config import BOT_TOKEN, DEFAULT_PUBLISH_TIME_IR, DEFAULT_PRIVACY
 from shared import db as dbmod
@@ -17,6 +17,7 @@ def build_app(db_path: str):
     dbmod.migrate(con)
     dbmod.init_defaults(con, DEFAULT_PUBLISH_TIME_IR, DEFAULT_PRIVACY)
     app.bot_data["db"] = con
+    app.add_handler(add_link.handler())
 
     async def start(update, context):
         if not await admin_only(update, context):
@@ -86,12 +87,7 @@ def build_app(db_path: str):
             await go_main(update, context)
             return
 
-        if data == menus.CB_ADD_LINK:
-            await q.edit_message_text(
-                "لینک ویدیوی یوتوب را بفرست.\n\nبعد از ارسال لینک، با دستور زیر ثبت می‌شود:\n/add URL",
-                reply_markup=menus.back_main_kb(),
-            )
-            return
+
 
         if data == menus.CB_ADD_VIDEO:
             await q.edit_message_text(
