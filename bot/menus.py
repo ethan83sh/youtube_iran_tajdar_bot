@@ -32,3 +32,10 @@ def time_menu():
         [InlineKeyboardButton("بازگشت به منو ↩︎", callback_data=CB_BACK)],
     ]
     return InlineKeyboardMarkup(rows)
+
+def queue_menu():
+    rows = [
+        [InlineKeyboardButton("حذف از صف (با آیدی)", callback_data="QUEUE_DEL")],
+        [InlineKeyboardButton("بازگشت به منو ↩︎", callback_data=CB_BACK)],
+    ]
+    return InlineKeyboardMarkup(rows)
