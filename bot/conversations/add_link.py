@@ -169,8 +169,25 @@ async def _finalize(update: Update, context: ContextTypes.DEFAULT_TYPE):
     con = context.application.bot_data["db"]
     url = context.user_data["url"]
 
-    # فعلاً title/description واقعی را بعداً از یوتوب می‌کشیم.
-    item_id = dbmod.add_queue_item_link(con, url=url, thumb_mode=context.user_data.get("thumb_mode", "yt"))
+    # title/desc نهایی
+    if context.user_data.get("title_mode") == "manual":
+        final_title = context.user_data.get("manual_title")
+    else:
+        final_title = context.user_data.get("yt_title")
+
+    if context.user_data.get("desc_mode") == "manual":
+        final_desc = context.user_data.get("manual_desc")
+    else:
+        final_desc = context.user_data.get("yt_desc")
+
+    item_id = dbmod.add_queue_item_link(
+        con,
+        url=url,
+        title=final_title,
+        description=final_desc,
+        thumb_mode=context.user_data.get("thumb_mode", "yt"),
+    )
+
 
     # آپدیت ستون‌های جدید
     con.execute(
