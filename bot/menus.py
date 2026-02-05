@@ -6,6 +6,38 @@ CB_QUEUE = "QUEUE"
 CB_TIME = "TIME"
 CB_CANCEL = "CANCEL"
 CB_BACK = "BACK_MAIN"
+CB_LINK_THUMB_YT = "LINK_THUMB_YT"
+CB_LINK_THUMB_MANUAL = "LINK_THUMB_MANUAL"
+CB_LINK_TITLE_YT = "LINK_TITLE_YT"
+CB_LINK_TITLE_MANUAL = "LINK_TITLE_MANUAL"
+CB_LINK_DESC_YT = "LINK_DESC_YT"
+CB_LINK_DESC_MANUAL = "LINK_DESC_MANUAL"
+
+
+def link_thumb_choice_kb():
+    rows = [
+        [InlineKeyboardButton("تامبنیل اصلی یوتوب", callback_data=CB_LINK_THUMB_YT)],
+        [InlineKeyboardButton("تامبنیل دستی آپلود می‌کنم", callback_data=CB_LINK_THUMB_MANUAL)],
+        [InlineKeyboardButton("کنسل ↩︎", callback_data=CB_CANCEL)],
+    ]
+    return InlineKeyboardMarkup(rows)
+
+def link_title_choice_kb():
+    rows = [
+        [InlineKeyboardButton("تیتر از یوتوب", callback_data=CB_LINK_TITLE_YT)],
+        [InlineKeyboardButton("تیتر دستی", callback_data=CB_LINK_TITLE_MANUAL)],
+        [InlineKeyboardButton("کنسل ↩︎", callback_data=CB_CANCEL)],
+    ]
+    return InlineKeyboardMarkup(rows)
+
+def link_desc_choice_kb():
+    rows = [
+        [InlineKeyboardButton("دیسک از یوتوب", callback_data=CB_LINK_DESC_YT)],
+        [InlineKeyboardButton("دیسک دستی", callback_data=CB_LINK_DESC_MANUAL)],
+        [InlineKeyboardButton("کنسل ↩︎", callback_data=CB_CANCEL)],
+    ]
+    return InlineKeyboardMarkup(rows)
+
 
 def main_menu() -> InlineKeyboardMarkup:
     rows = [
