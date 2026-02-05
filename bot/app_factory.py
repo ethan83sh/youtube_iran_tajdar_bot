@@ -3,6 +3,8 @@ from bot import menus
 from bot.config import BOT_TOKEN
 from shared import db as dbmod
 from bot.conversations.common import admin_only, go_main
+from telegram.constants import ChatMemberStatus
+
 
 def build_app(db_path: str):
     app = Application.builder().token(BOT_TOKEN).build()
@@ -16,6 +18,20 @@ def build_app(db_path: str):
             return
         await go_main(update, context)
 
+
+    async def whoami(update, context):
+        chat = update.effective_chat
+        user = update.effective_user
+        if not chat or not user:
+            return
+        m = await context.bot.get_chat_member(chat.id, user.id)
+        await update.effective_message.reply_text(
+            f"chat_id={chat.id}\nuser_id={user.id}\nstatus={m.status}"
+        )
+
+app.add_handler(CommandHandler("whoami", whoami))
+
+    
     async def on_click(update, context):
         if not await admin_only(update, context):
             return
