@@ -1,7 +1,8 @@
-from telegram.ext import Application, CallbackQueryHandler, CommandHandler, MessageHandler, filters
+from telegram.ext import Application, CallbackQueryHandler, CommandHandler
 from bot import menus
 from bot.config import BOT_TOKEN
 from shared import db as dbmod
+from bot.conversations.common import admin_only, go_main
 
 def build_app(db_path: str):
     app = Application.builder().token(BOT_TOKEN).build()
@@ -11,17 +12,44 @@ def build_app(db_path: str):
     app.bot_data["db"] = con
 
     async def start(update, context):
-        await update.effective_message.reply_text("منوی اصلی:", reply_markup=menus.main_menu())
-
-    async def on_menu_click(update, context):
-        q = update.callback_query
-        await q.answer()
-        if q.data == menus.CB_BACK:
-            await q.edit_message_text("منوی اصلی:", reply_markup=menus.main_menu())
+        if not await admin_only(update, context):
             return
-        await q.edit_message_text("این بخش در مرحله بعد فعال می‌شود.", reply_markup=menus.back_main_kb())
+        await go_main(update, context)
+
+    async def on_click(update, context):
+        if not await admin_only(update, context):
+            return
+        q = update.callback_query
+        data = q.data
+
+        if data == menus.CB_CANCEL or data == menus.CB_BACK:
+            await go_main(update, context)
+            return
+
+        if data == menus.CB_ADD_LINK:
+            await q.answer()
+            await q.edit_message_text("مرحله «اضافه کردن با لینک» در گام بعد فعال می‌شود.", reply_markup=menus.back_main_kb())
+            return
+
+        if data == menus.CB_ADD_VIDEO:
+            await q.answer()
+            await q.edit_message_text("مرحله «اضافه کردن ویدیو» در گام بعد فعال می‌شود.", reply_markup=menus.back_main_kb())
+            return
+
+        if data == menus.CB_QUEUE:
+            await q.answer()
+            await q.edit_message_text("مرحله «صف انتشار» در گام بعد فعال می‌شود.", reply_markup=menus.back_main_kb())
+            return
+
+        if data == menus.CB_TIME:
+            await q.answer()
+            await q.edit_message_text("مرحله «زمان انتشار» در گام بعد فعال می‌شود.", reply_markup=menus.back_main_kb())
+            return
+
+        await q.answer()
+        await go_main(update, context, "منوی اصلی:")
 
     app.add_handler(CommandHandler("start", start))
-    app.add_handler(CallbackQueryHandler(on_menu_click))
+    app.add_handler(CallbackQueryHandler(on_click))
 
     return app
