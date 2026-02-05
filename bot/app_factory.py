@@ -1,8 +1,13 @@
+import re
 from telegram.ext import Application, CallbackQueryHandler, CommandHandler
+
 from bot import menus
 from bot.config import BOT_TOKEN, DEFAULT_PUBLISH_TIME_IR, DEFAULT_PRIVACY
 from shared import db as dbmod
 from bot.conversations.common import admin_only, go_main
+
+
+TIME_RE = re.compile(r"^([01]\d|2[0-3]):([0-5]\d)$")
 
 
 def build_app(db_path: str):
@@ -27,6 +32,25 @@ def build_app(db_path: str):
         await update.effective_message.reply_text(
             f"chat_id={chat.id}\nuser_id={user.id}\nstatus={m.status}"
         )
+
+    async def settime(update, context):
+        if not await admin_only(update, context):
+            return
+
+        if not context.args or len(context.args) != 1:
+            await update.effective_message.reply_text(
+                "فرمت درست: /settime HH:MM  (مثلاً /settime 17:00)"
+            )
+            return
+
+        hhmm = context.args[0].strip()
+        if not TIME_RE.match(hhmm):
+            await update.effective_message.reply_text("زمان نامعتبر است. نمونه درست: 17:00")
+            return
+
+        con = context.application.bot_data["db"]
+        dbmod.set_publish_time_ir(con, hhmm)
+        await go_main(update, context, f"✅ زمان انتشار ذخیره شد: {hhmm} (ایران)")
 
     async def on_click(update, context):
         if not await admin_only(update, context):
@@ -85,6 +109,7 @@ def build_app(db_path: str):
 
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("whoami", whoami))
+    app.add_handler(CommandHandler("settime", settime))
     app.add_handler(CallbackQueryHandler(on_click))
 
     return app
