@@ -21,3 +21,14 @@ def cancel_kb() -> InlineKeyboardMarkup:
 
 def back_main_kb() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup([[InlineKeyboardButton("بازگشت به منو ↩︎", callback_data=CB_BACK)]])
+
+CB_TIME_VIEW = "TIME_VIEW"
+CB_TIME_SET = "TIME_SET"
+
+def time_menu():
+    rows = [
+        [InlineKeyboardButton("مشاهده زمان کنونی", callback_data=CB_TIME_VIEW)],
+        [InlineKeyboardButton("تغییر زمان کنونی", callback_data=CB_TIME_SET)],
+        [InlineKeyboardButton("بازگشت به منو ↩︎", callback_data=CB_BACK)],
+    ]
+    return InlineKeyboardMarkup(rows)
