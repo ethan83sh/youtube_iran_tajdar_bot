@@ -32,13 +32,53 @@ async def entry(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def got_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await admin_only(update, context):
         return ConversationHandler.END
+
     url = (update.effective_message.text or "").strip()
     if "youtube.com" not in url and "youtu.be" not in url:
-        await update.effective_message.reply_text("❌ لینک معتبر نیست. یک لینک یوتوب بفرست.", reply_markup=menus.cancel_kb())
+        await update.effective_message.reply_text(
+            "❌ لینک معتبر نیست. یک لینک یوتوب بفرست.",
+            reply_markup=menus.cancel_kb(),
+        )
         return S_WAIT_URL
+
+    vid = extract_video_id(url)
+    if not vid:
+        await update.effective_message.reply_text(
+            "❌ نتونستم videoId رو از لینک دربیارم.",
+            reply_markup=menus.cancel_kb(),
+        )
+        return S_WAIT_URL
+
+    item = get_video(YOUTUBE_API_KEY, vid)
+    if not item:
+        await update.effective_message.reply_text(
+            "❌ ویدیو پیدا نشد یا API محدودیت داد.",
+            reply_markup=menus.cancel_kb(),
+        )
+        return S_WAIT_URL
+
+    sn = item.get("snippet", {})
+    cd = item.get("contentDetails", {})
+    dur_s = parse_iso8601_duration_to_seconds(cd.get("duration", ""))
+
+    if dur_s <= 180:
+        await update.effective_message.reply_text(
+            f"⛔️ این ویدیو {dur_s} ثانیه است و زیر ۳ دقیقه محسوب می‌شود. وارد صف نشد.",
+        )
+        await go_main(update, context)
+        return ConversationHandler.END
+
     context.user_data["url"] = url
-    await update.effective_message.reply_text("تامبنیل را چطور می‌خوای؟", reply_markup=menus.link_thumb_choice_kb())
+    context.user_data["video_id"] = vid
+    context.user_data["yt_title"] = (sn.get("title") or "").strip()
+    context.user_data["yt_desc"] = (sn.get("description") or "").strip()
+
+    await update.effective_message.reply_text(
+        "تامبنیل را چطور می‌خوای؟",
+        reply_markup=menus.link_thumb_choice_kb(),
+    )
     return S_THUMB_CHOICE
+
 
 async def thumb_choice(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await admin_only(update, context):
