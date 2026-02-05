@@ -5,6 +5,9 @@ from telegram.ext import (
 from bot import menus
 from bot.conversations.common import admin_only, go_main
 from shared import db as dbmod
+from bot.config import YOUTUBE_API_KEY
+from shared.youtube_public import extract_video_id, get_video, parse_iso8601_duration_to_seconds
+
 
 S_WAIT_URL = 1
 S_THUMB_CHOICE = 2
