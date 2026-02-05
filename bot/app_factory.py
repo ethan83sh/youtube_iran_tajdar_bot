@@ -1,6 +1,6 @@
 from telegram.ext import Application, CallbackQueryHandler, CommandHandler
 from bot import menus
-from bot.config import BOT_TOKEN
+from bot.config import BOT_TOKEN, DEFAULT_PUBLISH_TIME_IR, DEFAULT_PRIVACY
 from shared import db as dbmod
 from bot.conversations.common import admin_only, go_main
 
@@ -10,6 +10,7 @@ def build_app(db_path: str):
 
     con = dbmod.connect(db_path)
     dbmod.migrate(con)
+    dbmod.init_defaults(con, DEFAULT_PUBLISH_TIME_IR, DEFAULT_PRIVACY)
     app.bot_data["db"] = con
 
     async def start(update, context):
@@ -61,9 +62,22 @@ def build_app(db_path: str):
             return
 
         if data == menus.CB_TIME:
+            await q.edit_message_text("زمان انتشار:", reply_markup=menus.time_menu())
+            return
+
+        if data == menus.CB_TIME_VIEW:
+            con = context.application.bot_data["db"]
+            t = dbmod.get_publish_time_ir(con)
             await q.edit_message_text(
-                "مرحله «زمان انتشار» در گام بعد فعال می‌شود.",
-                reply_markup=menus.back_main_kb(),
+                f"زمان فعلی انتشار: {t} (به وقت ایران)",
+                reply_markup=menus.time_menu(),
+            )
+            return
+
+        if data == menus.CB_TIME_SET:
+            await q.edit_message_text(
+                "زمان جدید را با این دستور بفرست:\n/settime HH:MM\nمثلاً: /settime 17:00",
+                reply_markup=menus.time_menu(),
             )
             return
 
