@@ -38,9 +38,7 @@ def build_app(db_path: str):
             return
 
         if not context.args or len(context.args) != 1:
-            await update.effective_message.reply_text(
-                "فرمت درست: /settime HH:MM  (مثلاً /settime 17:00)"
-            )
+            await update.effective_message.reply_text("فرمت درست: /settime HH:MM  (مثلاً /settime 17:00)")
             return
 
         hhmm = context.args[0].strip()
@@ -51,6 +49,30 @@ def build_app(db_path: str):
         con = context.application.bot_data["db"]
         dbmod.set_publish_time_ir(con, hhmm)
         await go_main(update, context, f"✅ زمان انتشار ذخیره شد: {hhmm} (ایران)")
+
+    async def add(update, context):
+        if not await admin_only(update, context):
+            return
+        if not context.args:
+            await update.effective_message.reply_text("فرمت درست: /add YOUTUBE_URL")
+            return
+
+        url = context.args[0].strip()
+        con = context.application.bot_data["db"]
+        item_id = dbmod.add_queue_item_link(con, url=url, thumb_mode="yt")
+        await go_main(update, context, f"✅ به صف اضافه شد: #{item_id}")
+
+    async def delq(update, context):
+        if not await admin_only(update, context):
+            return
+        if not context.args or len(context.args) != 1 or not context.args[0].isdigit():
+            await update.effective_message.reply_text("فرمت درست: /delq ID  (مثلاً /delq 12)")
+            return
+
+        item_id = int(context.args[0])
+        con = context.application.bot_data["db"]
+        dbmod.delete_queue_item(con, item_id)
+        await go_main(update, context, f"✅ از صف حذف شد: {item_id}")
 
     async def on_click(update, context):
         if not await admin_only(update, context):
@@ -66,7 +88,7 @@ def build_app(db_path: str):
 
         if data == menus.CB_ADD_LINK:
             await q.edit_message_text(
-                "مرحله «اضافه کردن با لینک» در گام بعد فعال می‌شود.",
+                "لینک ویدیوی یوتوب را بفرست.\n\nبعد از ارسال لینک، با دستور زیر ثبت می‌شود:\n/add URL",
                 reply_markup=menus.back_main_kb(),
             )
             return
@@ -79,10 +101,24 @@ def build_app(db_path: str):
             return
 
         if data == menus.CB_QUEUE:
-            await q.edit_message_text(
-                "مرحله «صف انتشار» در گام بعد فعال می‌شود.",
-                reply_markup=menus.back_main_kb(),
-            )
+            con = context.application.bot_data["db"]
+            rows = dbmod.list_queued(con, limit=30)
+
+            if not rows:
+                await q.edit_message_text("صف خالی است.", reply_markup=menus.back_main_kb())
+                return
+
+            lines = ["📥 صف انتشار (منتشرنشده‌ها):\n"]
+            for r in rows:
+                title = (r["title"] or "").strip()
+                url = (r["source_url"] or "").strip()
+                short = title if title else url
+                if len(short) > 60:
+                    short = short[:57] + "..."
+                lines.append(f"#{r['id']} — {short}")
+
+            text = "\n".join(lines) + "\n\nبرای حذف: /delq ID  (مثلاً /delq 12)"
+            await q.edit_message_text(text, reply_markup=menus.back_main_kb())
             return
 
         if data == menus.CB_TIME:
@@ -110,6 +146,8 @@ def build_app(db_path: str):
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("whoami", whoami))
     app.add_handler(CommandHandler("settime", settime))
+    app.add_handler(CommandHandler("add", add))
+    app.add_handler(CommandHandler("delq", delq))
     app.add_handler(CallbackQueryHandler(on_click))
 
     return app
