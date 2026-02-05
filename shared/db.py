@@ -17,6 +17,7 @@ def migrate(con: sqlite3.Connection) -> None:
         value TEXT NOT NULL
     );
     """)
+
     con.execute("""
     CREATE TABLE IF NOT EXISTS queue_items(
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -29,7 +30,20 @@ def migrate(con: sqlite3.Connection) -> None:
         status TEXT NOT NULL                -- 'queued'|'published'|'failed'
     );
     """)
+
+    def _add_col_safe(table: str, col: str, coldef: str):
+        cols = [r["name"] for r in con.execute(f"PRAGMA table_info({table})").fetchall()]
+        if col not in cols:
+            con.execute(f"ALTER TABLE {table} ADD COLUMN {col} {coldef}")
+
+    _add_col_safe("queue_items", "title_mode", "TEXT")            # 'yt'|'manual'
+    _add_col_safe("queue_items", "desc_mode", "TEXT")             # 'yt'|'manual'
+    _add_col_safe("queue_items", "manual_title", "TEXT")
+    _add_col_safe("queue_items", "manual_desc", "TEXT")
+    _add_col_safe("queue_items", "manual_thumb_file_id", "TEXT")
+
     con.commit()
+
 
 def set_setting(con: sqlite3.Connection, key: str, value: str) -> None:
     con.execute(
