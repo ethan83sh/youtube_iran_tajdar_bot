@@ -41,3 +41,14 @@ def set_setting(con: sqlite3.Connection, key: str, value: str) -> None:
 def get_setting(con: sqlite3.Connection, key: str) -> str | None:
     row = con.execute("SELECT value FROM settings WHERE key=?", (key,)).fetchone()
     return row["value"] if row else None
+def init_defaults(con, default_time_ir: str, default_privacy: str) -> None:
+    if get_setting(con, "publish_time_ir") is None:
+        set_setting(con, "publish_time_ir", default_time_ir)
+    if get_setting(con, "privacy") is None:
+        set_setting(con, "privacy", default_privacy)
+
+def get_publish_time_ir(con) -> str:
+    return get_setting(con, "publish_time_ir") or "17:00"
+
+def set_publish_time_ir(con, hhmm: str) -> None:
+    set_setting(con, "publish_time_ir", hhmm)
