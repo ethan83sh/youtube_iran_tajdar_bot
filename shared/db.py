@@ -52,3 +52,24 @@ def get_publish_time_ir(con) -> str:
 
 def set_publish_time_ir(con, hhmm: str) -> None:
     set_setting(con, "publish_time_ir", hhmm)
+
+def add_queue_item_link(con, url: str, title: str | None = None, description: str | None = None, thumb_mode: str = "yt") -> int:
+    cur = con.execute(
+        """
+        INSERT INTO queue_items(source_type, source_url, title, description, thumb_mode, created_at, status)
+        VALUES(?, ?, ?, ?, ?, datetime('now'), 'queued')
+        """,
+        ("link", url, title, description, thumb_mode),
+    )
+    con.commit()
+    return int(cur.lastrowid)
+
+def list_queued(con, limit: int = 20):
+    return con.execute(
+        "SELECT id, source_type, source_url, title, created_at FROM queue_items WHERE status='queued' ORDER BY id ASC LIMIT ?",
+        (limit,),
+    ).fetchall()
+
+def delete_queue_item(con, item_id: int) -> None:
+    con.execute("DELETE FROM queue_items WHERE id=? AND status='queued'", (item_id,))
+    con.commit()
