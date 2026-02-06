@@ -1,12 +1,15 @@
 import re
 from urllib.parse import urlparse, parse_qs
 
+from googleapiclient.discovery import build
+
 ID_RE = re.compile(r"^[A-Za-z0-9_-]{11}$")
+
 
 def extract_video_id(url: str) -> str | None:
     url = (url or "").strip()
 
-    # اگر کاربر خود ID را داد
+    # اگر خود ID داده شد
     if ID_RE.match(url):
         return url
 
@@ -23,17 +26,36 @@ def extract_video_id(url: str) -> str | None:
         vid = path.split("/")[0] if path else ""
         return vid if ID_RE.match(vid) else None
 
-    # youtube.com/watch?v=<id>
+    # youtube.com/...
     if "youtube.com" in host or "m.youtube.com" in host:
+        # /watch?v=<id>
         qs = parse_qs(p.query or "")
         v = (qs.get("v") or [""])[0]
         if ID_RE.match(v):
             return v
 
-        # youtube.com/shorts/<id>  یا  /live/<id>  یا /embed/<id>
+        # /shorts/<id> یا /live/<id> یا /embed/<id>
         parts = path.split("/")
         if len(parts) >= 2 and parts[0] in ("shorts", "live", "embed"):
             vid = parts[1]
             return vid if ID_RE.match(vid) else None
 
     return None
+
+
+def get_video(api_key: str, video_id: str) -> dict | None:
+    yt = build("youtube", "v3", developerKey=api_key)
+    res = yt.videos().list(part="snippet,contentDetails", id=video_id).execute()
+    items = res.get("items", [])
+    return items[0] if items else None
+
+
+def parse_iso8601_duration_to_seconds(dur: str) -> int:
+    # PT#H#M#S
+    m = re.match(r"^PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?$", dur or "")
+    if not m:
+        return 0
+    h = int(m.group(1) or 0)
+    mi = int(m.group(2) or 0)
+    s = int(m.group(3) or 0)
+    return h * 3600 + mi * 60 + s
