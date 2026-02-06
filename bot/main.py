@@ -8,10 +8,6 @@ from bot.config import DB_PATH
 
 
 def _write_file_if_env_set(env_name: str, path: str) -> bool:
-    """
-    If env var exists and file doesn't, write it to disk.
-    Returns True if file exists after function.
-    """
     val = os.environ.get(env_name)
     if not val:
         return Path(path).exists()
@@ -26,27 +22,25 @@ def _write_file_if_env_set(env_name: str, path: str) -> bool:
 
 
 def ensure_google_oauth_files():
-    # 1) client_secret.json
+    # client_secret.json (اگر گذاشتی)
     client_path = os.environ.get("YT_CLIENT_SECRET_PATH", "/tmp/client_secret.json")
     if _write_file_if_env_set("YT_CLIENT_SECRET_JSON", client_path):
         os.environ["YT_CLIENT_SECRET_PATH"] = client_path
 
-    # 2) token.json (اختیاری، ولی برای Railway ضروریه که headless نشه)
+    # token.json (لازم برای Railway/headless)
     token_path = os.environ.get("YT_TOKEN_PATH", "/tmp/token.json")
     if _write_file_if_env_set("YT_TOKEN_JSON", token_path):
         os.environ["YT_TOKEN_PATH"] = token_path
 
 
 def main():
-    # اگر secrets را در Railway Variables گذاشتی، اینجا به فایل تبدیل می‌کنیم
     ensure_google_oauth_files()
 
     app = build_app(DB_PATH)
-if app is None:
-    raise RuntimeError("build_app returned None (check bot/app_factory.py return app indentation)")
+    if app is None:
+        raise RuntimeError("build_app returned None. Check bot/app_factory.py (return app indentation).")
 
-
-    # بهتر: همه نوع آپدیت را بگیر تا چیزی miss نشه
+    # می‌تونی ALL_TYPES بذاری یا مثل قبل فقط message/callback_query
     app.run_polling(allowed_updates=Update.ALL_TYPES)
 
 
