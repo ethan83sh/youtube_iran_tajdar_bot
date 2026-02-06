@@ -6,6 +6,9 @@ from bot.config import BOT_TOKEN, DEFAULT_PUBLISH_TIME_IR, DEFAULT_PRIVACY
 from bot.conversations.common import admin_only, go_main
 from bot.conversations import add_link, edit_item, reorder_queue
 from shared import db as dbmod
+from datetime import time
+from zoneinfo import ZoneInfo
+from publisher.job import daily_publisher
 
 
 TIME_RE = re.compile(r"^([01]\d|2[0-3]):([0-5]\d)$")
@@ -18,6 +21,8 @@ def build_app(db_path: str):
     dbmod.migrate(con)
     dbmod.init_defaults(con, DEFAULT_PUBLISH_TIME_IR, DEFAULT_PRIVACY)
     app.bot_data["db"] = con
+        tz = ZoneInfo("Asia/Tehran")
+    app.job_queue.run_daily(daily_publisher, time=time(hour=14, minute=33, tzinfo=tz), name="daily_publisher")
 
     # Conversations
     app.add_handler(add_link.handler())
