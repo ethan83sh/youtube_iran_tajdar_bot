@@ -110,7 +110,40 @@ def build_app(db_path: str):
         context.application.job_queue.run_once(_ping, when=10)
         await update.effective_message.reply_text("⏱ تست شروع شد: 10 ثانیه دیگه پیام میاد…")
 
+    async def daily_in(update, context):
+        if not await admin_only(update, context):
+            return
+        if context.application.job_queue is None:
+            await update.effective_message.reply_text("JobQueue فعال نیست.")
+            return
+    
+        chat_id = update.effective_chat.id
+        seconds = 120
+        if context.args and context.args[0].isdigit():
+            seconds = int(context.args[0])
+    
+        async def _run(ctx):
+            await ctx.bot.send_message(chat_id=chat_id, text=f"⏱ اجرای تست daily_publisher بعد از {seconds} ثانیه…")
+            await daily_publisher(ctx)
+            await ctx.bot.send_message(chat_id=chat_id, text="✅ daily_publisher اجرا شد (تست زمان‌بندی).")
+    
+        context.application.job_queue.run_once(_run, when=seconds, name="test_daily_once")
+        await update.effective_message.reply_text(f"ثبت شد. {seconds} ثانیه دیگه اجرا میشه.")
 
+    async def jobs(update, context):
+        if not await admin_only(update, context):
+            return
+        jq = context.application.job_queue
+        if jq is None:
+            await update.effective_message.reply_text("JobQueue فعال نیست.")
+            return
+    
+        daily = jq.get_jobs_by_name("daily_publisher")
+        test = jq.get_jobs_by_name("test_daily_once")
+        await update.effective_message.reply_text(
+            f"daily_publisher jobs: {len(daily)}\n"
+            f"test_daily_once jobs: {len(test)}"
+        )
 
     
     async def on_click(update, context):
@@ -219,5 +252,7 @@ def build_app(db_path: str):
     app.add_handler(CommandHandler("delq", delq))
     app.add_handler(CallbackQueryHandler(on_click))
     app.add_handler(CommandHandler("testjob", testjob))
+    app.add_handler(CommandHandler("daily_in", daily_in))
+    app.add_handler(CommandHandler("jobs", jobs))
 
     return app
