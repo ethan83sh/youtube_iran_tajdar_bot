@@ -92,9 +92,10 @@ def add_queue_item_link(con, url: str, title: str | None = None, description: st
 
 def list_queued(con, limit: int = 20):
     return con.execute(
-        "SELECT id, source_type, source_url, title, created_at FROM queue_items WHERE status='queued' ORDER BY id ASC LIMIT ?",
+        "SELECT id, source_type, source_url, title, created_at FROM queue_items WHERE status='queued' ORDER BY sort_order ASC, id ASC LIMIT ?",
         (limit,),
     ).fetchall()
+
 
 def delete_queue_item(con, item_id: int) -> None:
     con.execute("DELETE FROM queue_items WHERE id=? AND status='queued'", (item_id,))
