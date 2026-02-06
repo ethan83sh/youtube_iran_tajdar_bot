@@ -86,8 +86,12 @@ def build_app(db_path: str):
         if not await admin_only(update, context):
             return
 
-        q = update.callback_query
-        await q.answer()
+       q = update.callback_query
+            try:
+           await q.answer()
+            except Exception:
+            pass
+    
         data = q.data or ""
 
         # Cancel / Back
