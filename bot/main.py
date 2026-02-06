@@ -1,10 +1,15 @@
 import os
+import logging
 from pathlib import Path
 
 from telegram import Update
+from telegram.ext import Application
 
 from bot.app_factory import build_app
 from bot.config import DB_PATH
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 
 def _write_file_if_env_set(env_name: str, path: str) -> bool:
@@ -38,7 +43,15 @@ def main():
     if app is None:
         raise RuntimeError("build_app returned None. Check bot/app_factory.py return app.")
 
-    app.run_polling(allowed_updates=Update.ALL_TYPES, drop_pending_updates=True)
+    # لاگ کن مطمئن شیم همین باته
+    me = app.bot.get_me()
+    logger.info("Bot started: @%s (id=%s)", me.username, me.id)
+
+    # webhook را حتماً پاک کن و بعد polling
+    app.run_polling(
+        allowed_updates=Update.ALL_TYPES,
+        drop_pending_updates=True,
+    )
 
 
 if __name__ == "__main__":
