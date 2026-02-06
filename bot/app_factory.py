@@ -151,8 +151,9 @@ def build_app(db_path: str):
         )
 
     def _parse_hhmm(hhmm: str):
-    hh, mm = hhmm.split(":")
-    return int(hh), int(mm)
+        hh, mm = hhmm.split(":")
+        return int(hh), int(mm)
+
 
     def ensure_daily_job(app):
         # اگر JobQueue فعال نبود، هیچ کاری نکن
