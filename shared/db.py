@@ -43,6 +43,9 @@ def migrate(con: sqlite3.Connection) -> None:
     _add_col_safe("queue_items", "manual_desc", "TEXT")
     _add_col_safe("queue_items", "manual_thumb_file_id", "TEXT")
     _add_col_safe("queue_items", "sort_order", "INTEGER")
+    _add_col_safe("queue_items", "picked_at", "TEXT")
+    _add_col_safe("queue_items", "published_at", "TEXT")
+
     
     # ordering
     _add_col_safe("queue_items", "sort_order", "INTEGER")
@@ -157,3 +160,33 @@ def swap_queue_order(con, id1: int, id2: int) -> None:
     con.execute("UPDATE queue_items SET sort_order=? WHERE id=? AND status='queued'", (o2, id1))
     con.execute("UPDATE queue_items SET sort_order=? WHERE id=? AND status='queued'", (o1, id2))
     con.execute("COMMIT")
+
+def pick_next_for_today(con):
+    # یک آیتم queued را برمی‌دارد و picked_at می‌زند
+    row = con.execute("""
+        SELECT id FROM queue_items
+        WHERE status='queued'
+        ORDER BY sort_order ASC, id ASC
+        LIMIT 1
+    """).fetchone()
+    if not row:
+        return None
+
+    item_id = int(row["id"])
+    con.execute("UPDATE queue_items SET status='picking', picked_at=datetime('now') WHERE id=? AND status='queued'", (item_id,))
+    con.commit()
+    return item_id
+
+def mark_back_to_queue(con, item_id: int):
+    con.execute("UPDATE queue_items SET status='queued' WHERE id=? AND status='picking'", (item_id,))
+    con.commit()
+
+def mark_ready(con, item_id: int):
+    con.execute("UPDATE queue_items SET status='ready' WHERE id=? AND status='picking'", (item_id,))
+    con.commit()
+
+def get_last_publish_day(con) -> str | None:
+    return get_setting(con, "last_publish_day")
+
+def set_last_publish_day(con, day: str):
+    set_setting(con, "last_publish_day", day)
