@@ -218,5 +218,6 @@ def build_app(db_path: str):
     app.add_handler(CommandHandler("add", add))
     app.add_handler(CommandHandler("delq", delq))
     app.add_handler(CallbackQueryHandler(on_click))
+    app.add_handler(CommandHandler("testjob", testjob))
 
     return app
