@@ -1,13 +1,11 @@
 import re
 from telegram.ext import Application, CallbackQueryHandler, CommandHandler
 
-from bot.conversations import add_link
 from bot import menus
 from bot.config import BOT_TOKEN, DEFAULT_PUBLISH_TIME_IR, DEFAULT_PRIVACY
-from shared import db as dbmod
 from bot.conversations.common import admin_only, go_main
-from bot.conversations import edit_item
-from bot.conversations import reorder_queue
+from bot.conversations import add_link, edit_item, reorder_queue
+from shared import db as dbmod
 
 
 TIME_RE = re.compile(r"^([01]\d|2[0-3]):([0-5]\d)$")
@@ -21,7 +19,7 @@ def build_app(db_path: str):
     dbmod.init_defaults(con, DEFAULT_PUBLISH_TIME_IR, DEFAULT_PRIVACY)
     app.bot_data["db"] = con
 
-    # Conversation: Add link
+    # Conversations
     app.add_handler(add_link.handler())
     app.add_handler(edit_item.handler())
     app.add_handler(reorder_queue.handler())
@@ -59,7 +57,7 @@ def build_app(db_path: str):
         await go_main(update, context, f"✅ زمان انتشار ذخیره شد: {hhmm} (ایران)")
 
     async def add(update, context):
-        # اختیاری: نگهش داشتیم برای مواقعی که بخوای سریع با دستور اضافه کنی
+        # اختیاری: افزودن سریع با دستور
         if not await admin_only(update, context):
             return
         if not context.args:
@@ -72,7 +70,7 @@ def build_app(db_path: str):
         await go_main(update, context, f"✅ به صف اضافه شد: #{item_id}")
 
     async def delq(update, context):
-        # اختیاری: حذف با دستور (علاوه بر حذف دکمه‌ای)
+        # اختیاری: حذف سریع با دستور
         if not await admin_only(update, context):
             return
         if not context.args or len(context.args) != 1 or not context.args[0].isdigit():
@@ -112,12 +110,33 @@ def build_app(db_path: str):
             if not rows:
                 await q.edit_message_text("صف خالی است.", reply_markup=menus.back_main_kb())
                 return
-            await q.edit_message_text(
-                "📥 صف انتشار (روی هر آیتم بزن):",
-                reply_markup=menus.queue_list_kb(rows),
-            )
+            await q.edit_message_text("📥 صف انتشار (روی هر آیتم بزن):", reply_markup=menus.queue_list_kb(rows))
             return
 
+        # Full view
+        m = re.match(r"^QUEUE_ITEM_VIEW:(\d+)$", data)
+        if m:
+            item_id = int(m.group(1))
+            con = context.application.bot_data["db"]
+            it = dbmod.get_queue_item(con, item_id)
+            if not it:
+                await q.edit_message_text("این آیتم پیدا نشد یا از صف حذف شده.", reply_markup=menus.back_main_kb())
+                return
+
+            title = (it["title"] or "").strip()
+            desc = (it["description"] or "").strip()
+            url = (it["source_url"] or "").strip()
+
+            text = (
+                f"👁 مشاهده کامل — آیتم #{item_id}\n\n"
+                f"📌 تیتر:\n{title}\n\n"
+                f"📝 دیسکریپشن:\n{desc[:1500]}\n\n"
+                f"🔗 لینک:\n{url}"
+            )
+            await q.edit_message_text(text, reply_markup=menus.queue_item_kb(item_id))
+            return
+
+        # Select item
         m = re.match(r"^QUEUE_ITEM:(\d+)$", data)
         if m:
             item_id = int(m.group(1))
@@ -127,6 +146,7 @@ def build_app(db_path: str):
             )
             return
 
+        # Delete item
         m = re.match(r"^QUEUE_ITEM_DEL:(\d+)$", data)
         if m:
             item_id = int(m.group(1))
@@ -141,31 +161,6 @@ def build_app(db_path: str):
             await q.edit_message_text("✅ حذف شد. صف فعلی:", reply_markup=menus.queue_list_kb(rows))
             return
 
-        # Publish time menu
-        if data == menus.CB_TIME:
-            await q.edit_message_text("زمان انتشار:", reply_markup=menus.time_menu())
-            return
-
-        if data == menus.CB_TIME_VIEW:
-            con = context.application.bot_data["db"]
-            t = dbmod.get_publish_time_ir(con)
-            await q.edit_message_text(
-                f"زمان فعلی انتشار: {t} (به وقت ایران)",
-                reply_markup=menus.time_menu(),
-            )
-            return
-
-        if data == menus.CB_TIME_SET:
-            await q.edit_message_text(
-                "زمان جدید را با این دستور بفرست:\n/settime HH:MM\nمثلاً: /settime 17:00",
-                reply_markup=menus.time_menu(),
-            )
-            return
-
-        await go_main(update, context)
-
-
-        
         # Publish time menu
         if data == menus.CB_TIME:
             await q.edit_message_text("زمان انتشار:", reply_markup=menus.time_menu())
