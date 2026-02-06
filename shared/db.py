@@ -122,3 +122,14 @@ def update_queue_thumb_file_id(con, item_id: int, file_id: str):
         (file_id, item_id),
     )
     con.commit()
+
+def swap_queue_order(con, id1: int, id2: int) -> None:
+    r1 = con.execute("SELECT sort_order FROM queue_items WHERE id=? AND status='queued'", (id1,)).fetchone()
+    r2 = con.execute("SELECT sort_order FROM queue_items WHERE id=? AND status='queued'", (id2,)).fetchone()
+    if not r1 or not r2:
+        return
+    o1, o2 = r1["sort_order"], r2["sort_order"]
+    con.execute("BEGIN")
+    con.execute("UPDATE queue_items SET sort_order=? WHERE id=? AND status='queued'", (o2, id1))
+    con.execute("UPDATE queue_items SET sort_order=? WHERE id=? AND status='queued'", (o1, id2))
+    con.execute("COMMIT")
