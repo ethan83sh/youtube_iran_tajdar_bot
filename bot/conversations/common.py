@@ -36,10 +36,12 @@ async def go_main(update, context, notice: str | None = None):
 
         # اگر پیام دکمه‌ای داریم، ادیت کن
         text = notice or "منو اصلی:"
-        await q.edit_message_text(text, reply_markup=menus.main_kb())
+        await q.edit_message_text(text, reply_markup=menus.main_menu()
+)
         return
 
     # اگر با Command آمده (callback_query ندارد)
     text = notice or "منو اصلی:"
-    await update.effective_message.reply_text(text, reply_markup=menus.main_kb())
+    await update.effective_message.reply_text(text, reply_markup=menus.main_menu()
+)
 
