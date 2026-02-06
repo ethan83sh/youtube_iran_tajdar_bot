@@ -41,7 +41,8 @@ def main():
         raise RuntimeError("build_app returned None. Check bot/app_factory.py (return app indentation).")
 
     # می‌تونی ALL_TYPES بذاری یا مثل قبل فقط message/callback_query
-    app.run_polling(allowed_updates=Update.ALL_TYPES)
+   app.run_polling(allowed_updates=Update.ALL_TYPES, drop_pending_updates=True)
+
 
 
 if __name__ == "__main__":
