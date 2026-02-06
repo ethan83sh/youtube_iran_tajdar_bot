@@ -138,29 +138,29 @@ def build_app(db_path: str):
 
             await q.edit_message_text("✅ حذف شد. صف فعلی:", reply_markup=menus.queue_list_kb(rows))
             return
-        m = re.match(r"^QUEUE_ITEM_VIEW:(\d+)$", data)
-if m:
-    item_id = int(m.group(1))
-    con = context.application.bot_data["db"]
-    it = dbmod.get_queue_item(con, item_id)
-    if not it:
-        await q.edit_message_text("این آیتم پیدا نشد یا از صف حذف شده.", reply_markup=menus.back_main_kb())
-        return
 
-    title = (it["title"] or "").strip()
-    desc = (it["description"] or "").strip()
-    url = (it["source_url"] or "").strip()
-    thumb_mode = it["thumb_mode"]
+        # Publish time menu
+        if data == menus.CB_TIME:
+            await q.edit_message_text("زمان انتشار:", reply_markup=menus.time_menu())
+            return
 
-    text = (
-        f"🎬 آیتم #{item_id}\n\n"
-        f"📌 تیتر:\n{title}\n\n"
-        f"📝 دیسکریپشن:\n{desc[:1500]}\n\n"
-        f"🔗 لینک:\n{url}\n\n"
-        f"🖼 پوستر: {thumb_mode}"
-    )
-    await q.edit_message_text(text, reply_markup=menus.queue_item_kb(item_id))
-    return
+        if data == menus.CB_TIME_VIEW:
+            con = context.application.bot_data["db"]
+            t = dbmod.get_publish_time_ir(con)
+            await q.edit_message_text(
+                f"زمان فعلی انتشار: {t} (به وقت ایران)",
+                reply_markup=menus.time_menu(),
+            )
+            return
+
+        if data == menus.CB_TIME_SET:
+            await q.edit_message_text(
+                "زمان جدید را با این دستور بفرست:\n/settime HH:MM\nمثلاً: /settime 17:00",
+                reply_markup=menus.time_menu(),
+            )
+            return
+
+        await go_main(update, context)
 
 
         
