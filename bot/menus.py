@@ -121,4 +121,6 @@ def queue_pick_position_kb(n: int):
     rows.append([InlineKeyboardButton("کنسل ↩︎", callback_data=CB_CANCEL)])
     return InlineKeyboardMarkup(rows)
 
+def main_kb():
+    return main_menu()
 
