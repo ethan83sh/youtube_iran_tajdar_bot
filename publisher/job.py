@@ -114,3 +114,16 @@ async def daily_publisher(context):
         if tmpdir:
             shutil.rmtree(tmpdir, ignore_errors=True)
             await _safe_send(context, f"🧹 فایل‌های موقت پاک شد: #{item_id}")
+
+async def publish_one_item_now(context, item_id: int | None = None):
+    con = context.application.bot_data["db"]
+
+    if item_id is None:
+        item_id = dbmod.pick_next_for_today(con)
+
+    if not item_id:
+        await _safe_send(context, "📭 آیتمی برای تست پیدا نشد.")
+        return
+
+    # اینجا همون منطق مرحله 3 (دانلود/آپلود/حذف) را صدا بزن
+    # پیشنهاد: کد مرحله 3 را به یک تابع داخلی مثل _process_item(context, con, item_id) منتقل کنیم.
