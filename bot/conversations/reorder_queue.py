@@ -6,7 +6,10 @@ from bot import menus
 from bot.conversations.common import admin_only, go_main
 from shared import db as dbmod
 
-S_PICK_POS = 1
+states = {
+    S_PICK_POS: [CallbackQueryHandler(pick_pos, pattern=r"^QUEUE_POS:\d+$")],
+}
+
 
 async def entry(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await admin_only(update, context):
