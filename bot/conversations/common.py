@@ -22,9 +22,23 @@ async def admin_only(update: Update, context: ContextTypes.DEFAULT_TYPE) -> bool
         return False
     return True
 
-async def go_main(update: Update, context: ContextTypes.DEFAULT_TYPE, text: str = "منوی اصلی:"):
-    if update.callback_query:
-        await update.callback_query.answer()
-        await update.callback_query.edit_message_text(text, reply_markup=main_menu())
-    else:
-        await update.effective_message.reply_text(text, reply_markup=main_menu())
+from telegram.error import BadRequest
+
+async def go_main(update, context, notice: str | None = None):
+    q = update.callback_query
+
+    if q:
+        try:
+            await q.answer()
+        except BadRequest:
+            pass  # Query is too old / invalid -> ignore
+
+        # اگر پیام دکمه‌ای داریم، ادیت کن
+        text = notice or "منو اصلی:"
+        await q.edit_message_text(text, reply_markup=menus.main_kb())
+        return
+
+    # اگر با Command آمده (callback_query ندارد)
+    text = notice or "منو اصلی:"
+    await update.effective_message.reply_text(text, reply_markup=menus.main_kb())
+
