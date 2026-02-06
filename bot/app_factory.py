@@ -1,5 +1,6 @@
 import re
 from telegram.ext import Application, CallbackQueryHandler, CommandHandler
+
 from bot.conversations import add_link
 from bot import menus
 from bot.config import BOT_TOKEN, DEFAULT_PUBLISH_TIME_IR, DEFAULT_PRIVACY
@@ -17,6 +18,8 @@ def build_app(db_path: str):
     dbmod.migrate(con)
     dbmod.init_defaults(con, DEFAULT_PUBLISH_TIME_IR, DEFAULT_PRIVACY)
     app.bot_data["db"] = con
+
+    # Conversation: Add link
     app.add_handler(add_link.handler())
 
     async def start(update, context):
@@ -52,6 +55,7 @@ def build_app(db_path: str):
         await go_main(update, context, f"✅ زمان انتشار ذخیره شد: {hhmm} (ایران)")
 
     async def add(update, context):
+        # اختیاری: نگهش داشتیم برای مواقعی که بخوای سریع با دستور اضافه کنی
         if not await admin_only(update, context):
             return
         if not context.args:
@@ -64,6 +68,7 @@ def build_app(db_path: str):
         await go_main(update, context, f"✅ به صف اضافه شد: #{item_id}")
 
     async def delq(update, context):
+        # اختیاری: حذف با دستور (علاوه بر حذف دکمه‌ای)
         if not await admin_only(update, context):
             return
         if not context.args or len(context.args) != 1 or not context.args[0].isdigit():
@@ -154,7 +159,6 @@ def build_app(db_path: str):
             return
 
         await go_main(update, context)
-
 
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("whoami", whoami))
