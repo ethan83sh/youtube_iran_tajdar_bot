@@ -233,9 +233,9 @@ def build_app(db_path: str):
                     raise
                 return
 
-            title = (it.get("title") or "").strip()
-            desc = (it.get("description") or "").strip()
-            url = (it.get("source_url") or "").strip()
+            title = ((it["title"] if "title" in it.keys() else "") or "").strip()
+            desc  = ((it["description"] if "description" in it.keys() else "") or "").strip()
+            url   = ((it["source_url"] if "source_url" in it.keys() else "") or "").strip()
 
             text = (
                 f"👁 مشاهده کامل — آیتم #{item_id}\n\n"
