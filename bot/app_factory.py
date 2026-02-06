@@ -94,6 +94,25 @@ def build_app(db_path: str):
         dbmod.delete_queue_item(con2, item_id)
         await go_main(update, context, f"✅ از صف حذف شد: {item_id}")
 
+    async def testjob(update, context):
+        if not await admin_only(update, context):
+            return
+    
+        if context.application.job_queue is None:
+            await update.effective_message.reply_text("JobQueue فعال نیست (job-queue extra نصب نشده).")
+            return
+    
+        chat_id = update.effective_chat.id
+    
+        async def _ping(ctx):
+            await ctx.bot.send_message(chat_id=chat_id, text="✅ JobQueue OK — این پیام از run_once آمد.")
+    
+        context.application.job_queue.run_once(_ping, when=10)
+        await update.effective_message.reply_text("⏱ تست شروع شد: 10 ثانیه دیگه پیام میاد…")
+
+
+
+    
     async def on_click(update, context):
         if not await admin_only(update, context):
             return
