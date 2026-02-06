@@ -1,34 +1,52 @@
-import os
-import tempfile
-from pathlib import Path
+import time
 import yt_dlp
 
+def _fmt_bytes(n):
+    if not n:
+        return "?"
+    for unit in ["B","KB","MB","GB","TB"]:
+        if n < 1024:
+            return f"{n:.1f}{unit}"
+        n /= 1024
+    return f"{n:.1f}PB"
 
-def download_youtube_temp(url: str, basename: str):
-    """
-    Downloads a single YouTube URL into a temp dir.
-    Returns: (info_dict, mp4_path, tmp_dir)
-    """
-    tmpdir = tempfile.mkdtemp(prefix="yt_")
-    outtmpl = os.path.join(tmpdir, f"{basename}.%(ext)s")
+def download_youtube_temp(url, name, *, progress_cb=None):
+    last = {"t": 0}
+
+    def hook(d):
+        if progress_cb is None:
+            return
+        if d.get("status") != "downloading":
+            return
+
+        now = time.time()
+        if now - last["t"] < 7:   # هر ۷ ثانیه یک آپدیت
+            return
+        last["t"] = now
+
+        downloaded = d.get("downloaded_bytes") or 0
+        total = d.get("total_bytes") or d.get("total_bytes_estimate") or 0
+        speed = d.get("speed")
+        eta = d.get("eta")
+
+        percent = None
+        if total:
+            percent = downloaded / total * 100
+
+        progress_cb({
+            "downloaded": downloaded,
+            "total": total,
+            "percent": percent,
+            "speed": speed,
+            "eta": eta,
+        })
 
     ydl_opts = {
-        "outtmpl": outtmpl,
-        "noplaylist": True,
-        "quiet": True,
-        # best video+audio, prefer mp4+m4a, then fallback
-        "format": "bv*[ext=mp4]+ba[ext=m4a]/bv*+ba/b",
-        "merge_output_format": "mp4",
+        "progress_hooks": [hook],
+        # سایر آپشن‌های خودت...
     }
 
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
         info = ydl.extract_info(url, download=True)
-        path = ydl.prepare_filename(info)
-
-    p = Path(path)
-    if p.suffix.lower() != ".mp4":
-        mp4 = p.with_suffix(".mp4")
-        if mp4.exists():
-            p = mp4
-
-    return info, str(p), tmpdir
+        # ...
+        return info, file_path, tmpdir
