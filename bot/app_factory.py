@@ -12,6 +12,8 @@ from bot.conversations.common import admin_only, go_main
 from bot.conversations import add_link, edit_item, reorder_queue
 from publisher.job import daily_publisher
 from shared import db as dbmod
+from publisher.job import publish_one_item_now
+
 
 logger = logging.getLogger(__name__)
 
@@ -317,6 +319,16 @@ def build_app(db_path: str):
 
         await go_main(update, context)
 
+
+async def publish_now(update, context):
+    if not await admin_only(update, context):
+        return
+    await update.effective_message.reply_text("🚀 شروع تست دانلود/آپلود…")
+    await publish_one_item_now(context)
+    await update.effective_message.reply_text("✅ تست تمام شد (اگر خطا بود، در پیام‌های گزارش می‌بینی).")
+
+
+    
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("whoami", whoami))
     app.add_handler(CommandHandler("settime", settime))
@@ -326,7 +338,8 @@ def build_app(db_path: str):
     app.add_handler(CommandHandler("daily_in", daily_in))
     app.add_handler(CommandHandler("jobs", jobs))
     app.add_handler(CallbackQueryHandler(on_click))
-
+    app.add_handler(CommandHandler("publish_now", publish_now))
+    
     async def error_handler(update, context):
         err = context.error
         # ignore known harmless callback issues
