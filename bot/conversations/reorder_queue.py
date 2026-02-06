@@ -40,7 +40,7 @@ async def entry(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     return S_PICK_POS
 
-async def pick_pos(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def pick_pos(update, context):
     if not await admin_only(update, context):
         return ConversationHandler.END
 
@@ -52,28 +52,27 @@ async def pick_pos(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await go_main(update, context)
         return ConversationHandler.END
 
-    pos = int(m.group(1))  # 1..N
-    item_id = int(context.user_data.get("reorder_item_id"))
-    ids = context.user_data.get("queued_ids") or []
+    pos = int(m.group(1))
+    item_id = int(context.user_data.get("reorder_item_id") or 0)
+    if not item_id:
+        await go_main(update, context)
+        return ConversationHandler.END
 
+    con = context.application.bot_data["db"]
+    ids = dbmod.list_queued_ids(con, limit=200)   # دوباره از DB
     if pos < 1 or pos > len(ids):
         await q.edit_message_text("جایگاه نامعتبر است.", reply_markup=menus.back_main_kb())
         return ConversationHandler.END
 
     target_id = int(ids[pos - 1])
-    con = context.application.bot_data["db"]
 
     if target_id != item_id:
         dbmod.swap_queue_order(con, item_id, target_id)
 
-    # نمایش صف بعد از تغییر
     rows = dbmod.list_queued(con, limit=30)
-    if not rows:
-        await q.edit_message_text("صف خالی است.", reply_markup=menus.back_main_kb())
-        return ConversationHandler.END
-
     await q.edit_message_text("✅ ترتیب صف تغییر کرد. صف فعلی:", reply_markup=menus.queue_list_kb(rows))
     return ConversationHandler.END
+
 
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await go_main(update, context, "کنسل شد. منوی اصلی:")
