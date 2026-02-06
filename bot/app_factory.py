@@ -86,13 +86,14 @@ def build_app(db_path: str):
         if not await admin_only(update, context):
             return
 
-       q = update.callback_query
-            try:
-           await q.answer()
-            except Exception:
-            pass
-    
+        q = update.callback_query
         data = q.data or ""
+
+        # جواب دادن به callback را امن می‌کنیم تا "Query too old" کرش نکند
+        try:
+            await q.answer()
+        except Exception:
+            pass
 
         # Cancel / Back
         if data in (menus.CB_CANCEL, menus.CB_BACK):
@@ -187,6 +188,7 @@ def build_app(db_path: str):
             return
 
         await go_main(update, context)
+
 
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("whoami", whoami))
