@@ -1,14 +1,15 @@
 import re
+from datetime import time
+from zoneinfo import ZoneInfo
+
 from telegram.ext import Application, CallbackQueryHandler, CommandHandler
 
 from bot import menus
 from bot.config import BOT_TOKEN, DEFAULT_PUBLISH_TIME_IR, DEFAULT_PRIVACY
 from bot.conversations.common import admin_only, go_main
 from bot.conversations import add_link, edit_item, reorder_queue
-from shared import db as dbmod
-from datetime import time
-from zoneinfo import ZoneInfo
 from publisher.job import daily_publisher
+from shared import db as dbmod
 
 
 TIME_RE = re.compile(r"^([01]\d|2[0-3]):([0-5]\d)$")
@@ -21,14 +22,14 @@ def build_app(db_path: str):
     dbmod.migrate(con)
     dbmod.init_defaults(con, DEFAULT_PUBLISH_TIME_IR, DEFAULT_PRIVACY)
     app.bot_data["db"] = con
-    
+
+    # Daily publisher (17:00 Iran time)
     tz = ZoneInfo("Asia/Tehran")
     app.job_queue.run_daily(
         daily_publisher,
         time=time(hour=17, minute=0, tzinfo=tz),
         name="daily_publisher",
     )
-
 
     # Conversations
     app.add_handler(add_link.handler())
@@ -63,8 +64,8 @@ def build_app(db_path: str):
             await update.effective_message.reply_text("زمان نامعتبر است. نمونه درست: 17:00")
             return
 
-        con = context.application.bot_data["db"]
-        dbmod.set_publish_time_ir(con, hhmm)
+        con2 = context.application.bot_data["db"]
+        dbmod.set_publish_time_ir(con2, hhmm)
         await go_main(update, context, f"✅ زمان انتشار ذخیره شد: {hhmm} (ایران)")
 
     async def add(update, context):
@@ -76,8 +77,8 @@ def build_app(db_path: str):
             return
 
         url = context.args[0].strip()
-        con = context.application.bot_data["db"]
-        item_id = dbmod.add_queue_item_link(con, url=url, thumb_mode="yt")
+        con2 = context.application.bot_data["db"]
+        item_id = dbmod.add_queue_item_link(con2, url=url, thumb_mode="yt")
         await go_main(update, context, f"✅ به صف اضافه شد: #{item_id}")
 
     async def delq(update, context):
@@ -89,8 +90,8 @@ def build_app(db_path: str):
             return
 
         item_id = int(context.args[0])
-        con = context.application.bot_data["db"]
-        dbmod.delete_queue_item(con, item_id)
+        con2 = context.application.bot_data["db"]
+        dbmod.delete_queue_item(con2, item_id)
         await go_main(update, context, f"✅ از صف حذف شد: {item_id}")
 
     async def on_click(update, context):
@@ -100,7 +101,6 @@ def build_app(db_path: str):
         q = update.callback_query
         data = q.data or ""
 
-        # جواب دادن به callback را امن می‌کنیم تا "Query too old" کرش نکند
         try:
             await q.answer()
         except Exception:
@@ -119,10 +119,10 @@ def build_app(db_path: str):
             )
             return
 
-        # Queue list (button-based)
+        # Queue list
         if data == menus.CB_QUEUE or data == menus.CB_QUEUE_REFRESH:
-            con = context.application.bot_data["db"]
-            rows = dbmod.list_queued(con, limit=30)
+            con2 = context.application.bot_data["db"]
+            rows = dbmod.list_queued(con2, limit=30)
             if not rows:
                 await q.edit_message_text("صف خالی است.", reply_markup=menus.back_main_kb())
                 return
@@ -133,8 +133,8 @@ def build_app(db_path: str):
         m = re.match(r"^QUEUE_ITEM_VIEW:(\d+)$", data)
         if m:
             item_id = int(m.group(1))
-            con = context.application.bot_data["db"]
-            it = dbmod.get_queue_item(con, item_id)
+            con2 = context.application.bot_data["db"]
+            it = dbmod.get_queue_item(con2, item_id)
             if not it:
                 await q.edit_message_text("این آیتم پیدا نشد یا از صف حذف شده.", reply_markup=menus.back_main_kb())
                 return
@@ -156,24 +156,20 @@ def build_app(db_path: str):
         m = re.match(r"^QUEUE_ITEM:(\d+)$", data)
         if m:
             item_id = int(m.group(1))
-            await q.edit_message_text(
-                f"آیتم انتخاب شد: #{item_id}",
-                reply_markup=menus.queue_item_kb(item_id),
-            )
+            await q.edit_message_text(f"آیتم انتخاب شد: #{item_id}", reply_markup=menus.queue_item_kb(item_id))
             return
 
         # Delete item
         m = re.match(r"^QUEUE_ITEM_DEL:(\d+)$", data)
         if m:
             item_id = int(m.group(1))
-            con = context.application.bot_data["db"]
-            dbmod.delete_queue_item(con, item_id)
+            con2 = context.application.bot_data["db"]
+            dbmod.delete_queue_item(con2, item_id)
 
-            rows = dbmod.list_queued(con, limit=30)
+            rows = dbmod.list_queued(con2, limit=30)
             if not rows:
                 await q.edit_message_text("✅ حذف شد. صف خالی است.", reply_markup=menus.back_main_kb())
                 return
-
             await q.edit_message_text("✅ حذف شد. صف فعلی:", reply_markup=menus.queue_list_kb(rows))
             return
 
@@ -183,12 +179,9 @@ def build_app(db_path: str):
             return
 
         if data == menus.CB_TIME_VIEW:
-            con = context.application.bot_data["db"]
-            t = dbmod.get_publish_time_ir(con)
-            await q.edit_message_text(
-                f"زمان فعلی انتشار: {t} (به وقت ایران)",
-                reply_markup=menus.time_menu(),
-            )
+            con2 = context.application.bot_data["db"]
+            t = dbmod.get_publish_time_ir(con2)
+            await q.edit_message_text(f"زمان فعلی انتشار: {t} (به وقت ایران)", reply_markup=menus.time_menu())
             return
 
         if data == menus.CB_TIME_SET:
@@ -199,7 +192,6 @@ def build_app(db_path: str):
             return
 
         await go_main(update, context)
-
 
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("whoami", whoami))
