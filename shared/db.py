@@ -36,13 +36,25 @@ def migrate(con: sqlite3.Connection) -> None:
         if col not in cols:
             con.execute(f"ALTER TABLE {table} ADD COLUMN {col} {coldef}")
 
+    # columns for add_link/edit flows
     _add_col_safe("queue_items", "title_mode", "TEXT")            # 'yt'|'manual'
     _add_col_safe("queue_items", "desc_mode", "TEXT")             # 'yt'|'manual'
     _add_col_safe("queue_items", "manual_title", "TEXT")
     _add_col_safe("queue_items", "manual_desc", "TEXT")
     _add_col_safe("queue_items", "manual_thumb_file_id", "TEXT")
 
+    # ordering
+    _add_col_safe("queue_items", "sort_order", "INTEGER")
+
+    # backfill sort_order for existing rows
+    con.execute("""
+    UPDATE queue_items
+    SET sort_order = id
+    WHERE sort_order IS NULL
+    """)
+
     con.commit()
+
 
 
 def set_setting(con: sqlite3.Connection, key: str, value: str) -> None:
