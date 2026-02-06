@@ -1,4 +1,3 @@
-import os
 import shutil
 import tempfile
 import time
@@ -16,6 +15,19 @@ def _fmt_bytes(n):
             return f"{n:.1f}{unit}"
         n /= 1024
     return f"{n:.1f}PB"
+
+
+def probe_youtube_formats(url: str) -> dict:
+    """
+    فقط متادیتا/فرمت‌ها را می‌گیرد (بدون دانلود) تا بتوانی کیفیت‌های موجود را لیست کنی. [web:601]
+    """
+    ydl_opts = {
+        "quiet": True,
+        "no_warnings": True,
+        "noplaylist": True,
+    }
+    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+        return ydl.extract_info(url, download=False)
 
 
 def download_youtube_temp(url, name, *, progress_cb=None, format_selector: str | None = None):
@@ -37,7 +49,7 @@ def download_youtube_temp(url, name, *, progress_cb=None, format_selector: str |
             return
 
         now = time.time()
-        # هر ۵-۷ ثانیه یک آپدیت (برای اسپم نشدن)
+        # هر ~۷ ثانیه یک آپدیت (برای اسپم نشدن)
         if status == "downloading" and (now - last["t"] < 7):
             return
         last["t"] = now
@@ -60,7 +72,7 @@ def download_youtube_temp(url, name, *, progress_cb=None, format_selector: str |
                 "percent": percent,
                 "speed": speed,
                 "eta": eta,
-                "filename": info_dict.get("_filename"),  # گاهی اینجا پر می‌شود
+                "filename": info_dict.get("_filename"),
             }
         )
 
@@ -72,21 +84,22 @@ def download_youtube_temp(url, name, *, progress_cb=None, format_selector: str |
         "no_warnings": True,
         "merge_output_format": "mp4",
     }
+
+    # انتخاب کیفیت با selector (مثلاً 2160p/1080p) [web:613]
     if format_selector:
-        ydl_opts["format"] = format_selector  # انتخاب کیفیت با selector [web:610]
+        ydl_opts["format"] = format_selector
 
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=True)
 
             # مسیر نهایی فایل دانلودشده
-            file_path = info.get("filepath")  # در بعضی موارد yt-dlp این را می‌گذارد [web:646]
+            file_path = info.get("filepath")
             if not file_path:
-                file_path = ydl.prepare_filename(info)  # روش رایج برای گرفتن اسم فایل [web:649]
+                file_path = ydl.prepare_filename(info)  # روش رایج برای filename [web:649]
 
             return info, file_path, tmpdir
 
     except Exception:
-        # اگر شکست خورد، فولدر موقت را پاک کن
         shutil.rmtree(tmpdir, ignore_errors=True)
         raise
