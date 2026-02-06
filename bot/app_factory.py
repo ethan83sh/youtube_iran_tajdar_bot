@@ -21,8 +21,14 @@ def build_app(db_path: str):
     dbmod.migrate(con)
     dbmod.init_defaults(con, DEFAULT_PUBLISH_TIME_IR, DEFAULT_PRIVACY)
     app.bot_data["db"] = con
-        tz = ZoneInfo("Asia/Tehran")
-    app.job_queue.run_daily(daily_publisher, time=time(hour=14, minute=33, tzinfo=tz), name="daily_publisher")
+    
+    tz = ZoneInfo("Asia/Tehran")
+    app.job_queue.run_daily(
+        daily_publisher,
+        time=time(hour=17, minute=0, tzinfo=tz),
+        name="daily_publisher",
+    )
+
 
     # Conversations
     app.add_handler(add_link.handler())
