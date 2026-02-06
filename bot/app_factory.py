@@ -10,6 +10,7 @@ from bot import menus
 from bot.config import BOT_TOKEN, DEFAULT_PUBLISH_TIME_IR, DEFAULT_PRIVACY
 from bot.conversations.common import admin_only, go_main
 from bot.conversations import add_link, edit_item, reorder_queue
+from bot.quality_callbacks import on_pick_quality_callback  # NEW
 from publisher.job import daily_publisher, publish_one_item_now
 from shared import db as dbmod
 
@@ -268,7 +269,7 @@ def build_app(db_path: str):
                 return
         logger.exception("Unhandled exception while processing update", exc_info=err)
 
-    # ثبت handlerها (خیلی مهم: قبل از return)
+    # ثبت handlerها (مهم: قبل از return)
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("whoami", whoami))
     app.add_handler(CommandHandler("settime", settime))
@@ -278,7 +279,11 @@ def build_app(db_path: str):
     app.add_handler(CommandHandler("daily_in", daily_in))
     app.add_handler(CommandHandler("jobs", jobs))
     app.add_handler(CommandHandler("publish_now", publish_now))
+
+    # NEW: اول handler کیفیت، بعد on_click عمومی
+    app.add_handler(CallbackQueryHandler(on_pick_quality_callback, pattern=r"^qpick:"))  # [web:714]
     app.add_handler(CallbackQueryHandler(on_click))
+
     app.add_error_handler(error_handler)
 
     return app
