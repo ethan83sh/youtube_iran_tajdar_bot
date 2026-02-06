@@ -22,12 +22,10 @@ def _write_file_if_env_set(env_name: str, path: str) -> bool:
 
 
 def ensure_google_oauth_files():
-    # client_secret.json (اگر گذاشتی)
     client_path = os.environ.get("YT_CLIENT_SECRET_PATH", "/tmp/client_secret.json")
     if _write_file_if_env_set("YT_CLIENT_SECRET_JSON", client_path):
         os.environ["YT_CLIENT_SECRET_PATH"] = client_path
 
-    # token.json (لازم برای Railway/headless)
     token_path = os.environ.get("YT_TOKEN_PATH", "/tmp/token.json")
     if _write_file_if_env_set("YT_TOKEN_JSON", token_path):
         os.environ["YT_TOKEN_PATH"] = token_path
@@ -38,11 +36,9 @@ def main():
 
     app = build_app(DB_PATH)
     if app is None:
-        raise RuntimeError("build_app returned None. Check bot/app_factory.py (return app indentation).")
+        raise RuntimeError("build_app returned None. Check bot/app_factory.py return app.")
 
-    # می‌تونی ALL_TYPES بذاری یا مثل قبل فقط message/callback_query
-   app.run_polling(allowed_updates=Update.ALL_TYPES, drop_pending_updates=True)
-
+    app.run_polling(allowed_updates=Update.ALL_TYPES, drop_pending_updates=True)
 
 
 if __name__ == "__main__":
