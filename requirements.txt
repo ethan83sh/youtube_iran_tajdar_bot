@@ -1,3 +1,8 @@
 python-telegram-bot[job-queue]==21.8
 python-dotenv==1.0.1
 google-api-python-client==2.160.0
+yt-dlp
+google-api-python-client
+google-auth
+google-auth-oauthlib
+google-auth-httplib2
