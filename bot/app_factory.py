@@ -23,13 +23,9 @@ def build_app(db_path: str):
     dbmod.init_defaults(con, DEFAULT_PUBLISH_TIME_IR, DEFAULT_PRIVACY)
     app.bot_data["db"] = con
 
-    # Daily publisher (17:00 Iran time)
-    tz = ZoneInfo("Asia/Tehran")
-    app.job_queue.run_daily(
-        daily_publisher,
-        time=time(hour=17, minute=0, tzinfo=tz),
-        name="daily_publisher",
-    )
+    # Daily publisher 
+    app.bot_data["db"] = con
+
 
     # Conversations
     app.add_handler(add_link.handler())
@@ -144,6 +140,33 @@ def build_app(db_path: str):
             f"daily_publisher jobs: {len(daily)}\n"
             f"test_daily_once jobs: {len(test)}"
         )
+
+    def _parse_hhmm(hhmm: str):
+    hh, mm = hhmm.split(":")
+    return int(hh), int(mm)
+
+    def ensure_daily_job(app):
+        # اگر JobQueue فعال نبود، هیچ کاری نکن
+        if app.job_queue is None:
+            return False
+    
+        # هر Job قبلی با همین نام را پاک کن
+        for j in app.job_queue.get_jobs_by_name("daily_publisher"):
+            j.schedule_removal()
+    
+        # زمان را از DB بخوان
+        con = app.bot_data["db"]
+        hhmm = dbmod.get_publish_time_ir(con)  # مثل "17:00"
+        h, m = _parse_hhmm(hhmm)
+    
+        tz = ZoneInfo("Asia/Tehran")
+        app.job_queue.run_daily(
+            daily_publisher,
+            time=time(hour=h, minute=m, tzinfo=tz),
+            name="daily_publisher",
+        )
+        return True
+
 
     
     async def on_click(update, context):
