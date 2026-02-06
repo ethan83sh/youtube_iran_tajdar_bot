@@ -53,6 +53,15 @@ async def _process_item(context, con, item_id: int, *, set_today_done: bool):
 
     # DEBUG موقت: کلیدهای رکورد را ببینیم (بعداً حذفش می‌کنیم)
     await _safe_send(context, f"DEBUG keys for #{item_id}: {list(it.keys())}")
+    it_raw = dbmod.get_queue_item(con, item_id)
+    await _safe_send(context, f"DEBUG raw type for #{item_id}: {type(it_raw)}")
+    try:
+        await _safe_send(context, f"DEBUG raw repr for #{item_id}: {repr(it_raw)[:500]}")
+    except Exception:
+        pass
+    
+    it = _row_to_dict(it_raw)
+    await _safe_send(context, f"DEBUG keys for #{item_id}: {list(it.keys())}")
 
     title = (it.get("title") or "").strip()
     url = _pick_url(it)
