@@ -42,6 +42,9 @@ def main():
     ensure_google_oauth_files()
 
     app = build_app(DB_PATH)
+if app is None:
+    raise RuntimeError("build_app returned None (check bot/app_factory.py return app indentation)")
+
 
     # بهتر: همه نوع آپدیت را بگیر تا چیزی miss نشه
     app.run_polling(allowed_updates=Update.ALL_TYPES)
