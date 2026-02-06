@@ -1,9 +1,51 @@
+import os
+from pathlib import Path
+
+from telegram import Update
+
 from bot.app_factory import build_app
 from bot.config import DB_PATH
 
+
+def _write_file_if_env_set(env_name: str, path: str) -> bool:
+    """
+    If env var exists and file doesn't, write it to disk.
+    Returns True if file exists after function.
+    """
+    val = os.environ.get(env_name)
+    if not val:
+        return Path(path).exists()
+
+    p = Path(path)
+    p.parent.mkdir(parents=True, exist_ok=True)
+
+    if not p.exists():
+        p.write_text(val, encoding="utf-8")
+
+    return p.exists()
+
+
+def ensure_google_oauth_files():
+    # 1) client_secret.json
+    client_path = os.environ.get("YT_CLIENT_SECRET_PATH", "/tmp/client_secret.json")
+    if _write_file_if_env_set("YT_CLIENT_SECRET_JSON", client_path):
+        os.environ["YT_CLIENT_SECRET_PATH"] = client_path
+
+    # 2) token.json (اختیاری، ولی برای Railway ضروریه که headless نشه)
+    token_path = os.environ.get("YT_TOKEN_PATH", "/tmp/token.json")
+    if _write_file_if_env_set("YT_TOKEN_JSON", token_path):
+        os.environ["YT_TOKEN_PATH"] = token_path
+
+
 def main():
+    # اگر secrets را در Railway Variables گذاشتی، اینجا به فایل تبدیل می‌کنیم
+    ensure_google_oauth_files()
+
     app = build_app(DB_PATH)
-    app.run_polling(allowed_updates=["message", "callback_query"])
+
+    # بهتر: همه نوع آپدیت را بگیر تا چیزی miss نشه
+    app.run_polling(allowed_updates=Update.ALL_TYPES)
+
 
 if __name__ == "__main__":
     main()
