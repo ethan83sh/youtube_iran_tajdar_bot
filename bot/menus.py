@@ -19,6 +19,7 @@ CB_QUEUE_ITEM_EDIT = "QUEUE_ITEM_EDIT:"         # +id
 CB_QUEUE_ITEM_EDIT_TITLE = "QUEUE_ITEM_EDIT_TITLE:"   # +id
 CB_QUEUE_ITEM_EDIT_DESC = "QUEUE_ITEM_EDIT_DESC:"     # +id
 CB_QUEUE_ITEM_EDIT_THUMB = "QUEUE_ITEM_EDIT_THUMB:"   # +id
+CB_QUEUE_ITEM_VIEW = "QUEUE_ITEM_VIEW:"  # +id
 
 
 def link_thumb_choice_kb():
@@ -94,6 +95,7 @@ def queue_list_kb(items):
 
 def queue_item_kb(item_id: int):
     rows = [
+        [InlineKeyboardButton("👁 مشاهده کامل", callback_data=f"{CB_QUEUE_ITEM_VIEW}{item_id}")],
         [InlineKeyboardButton("✏️ ادیت تیتر", callback_data=f"{CB_QUEUE_ITEM_EDIT_TITLE}{item_id}")],
         [InlineKeyboardButton("📝 ادیت دیسکریپشن", callback_data=f"{CB_QUEUE_ITEM_EDIT_DESC}{item_id}")],
         [InlineKeyboardButton("🖼 تغییر پوستر", callback_data=f"{CB_QUEUE_ITEM_EDIT_THUMB}{item_id}")],
