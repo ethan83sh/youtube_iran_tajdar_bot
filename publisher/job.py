@@ -64,6 +64,20 @@ def _pick_url(it: dict) -> str:
     return (it.get("source_url") or it.get("url") or it.get("link") or "").strip()
 
 
+def _hires_format_selector() -> str:
+    # فقط 4K یا 1080: اول 2160، اگر نبود 1080
+    # bv = bestvideo, ba = bestaudio, b = best (single file fallback)
+    return (
+        "bv*[height=2160]+ba/b[height=2160]/"
+        "bv*[height=1080]+ba/b[height=1080]"
+    )
+
+
+def _looks_like_no_requested_format(err: Exception) -> bool:
+    s = str(err).lower()
+    return ("requested format" in s and "not available" in s) or ("no video formats found" in s)
+
+
 async def _process_item(context, con, item_id: int, *, set_today_done: bool):
     now_str = _now_str_ir()
     today = _today_ir()
@@ -77,7 +91,6 @@ async def _process_item(context, con, item_id: int, *, set_today_done: bool):
         await _safe_send(context, f"❌ آیتم #{item_id} لینک ندارد (source_url/url/link خالی است).")
         if set_today_done:
             dbmod.set_last_publish_day(con, today)
-        # اگر آیتم picking شده بود، برگردان به صف
         try:
             dbmod.mark_back_to_queue(con, item_id)
         except Exception:
@@ -96,9 +109,7 @@ async def _process_item(context, con, item_id: int, *, set_today_done: bool):
         last_edit = {"t": 0.0}
 
         def progress_cb(p: dict):
-            """
-            این callback داخل thread دانلود اجرا می‌شود، پس باید thread-safe به loop پاس داده شود. [web:642]
-            """
+            # این callback داخل thread دانلود اجرا می‌شود؛ پس باید thread-safe به loop پاس داده شود. [web:684]
             now = time.time()
             if now - last_edit["t"] < 7:
                 return
@@ -112,7 +123,6 @@ async def _process_item(context, con, item_id: int, *, set_today_done: bool):
 
             percent_str = f"{percent:.1f}%" if percent is not None else "?"
             total_str = _fmt_bytes(total) if total else "?"
-
             text = (
                 f"⬇️ دانلود: #{item_id}\n"
                 f"{percent_str}  ({_fmt_bytes(downloaded)} / {total_str})\n"
@@ -123,27 +133,43 @@ async def _process_item(context, con, item_id: int, *, set_today_done: bool):
                 lambda: asyncio.create_task(_safe_edit(context, progress_msg_id, text))
             )
 
-        # دانلود را در thread جدا انجام بده تا event loop تلگرام قفل نشود
-        info, file_path, tmpdir = await asyncio.to_thread(
-            download_youtube_temp,
-            url,
-            f"item_{item_id}",
-            progress_cb=progress_cb,
-        )
+        # دانلود: فقط 4K یا 1080
+        fmt = _hires_format_selector()
 
-        await _safe_send(context, f"✅ دانلود تمام شد: #{item_id}")
+        try:
+            info, file_path, tmpdir = await asyncio.to_thread(
+                download_youtube_temp,
+                url,
+                f"item_{item_id}",
+                progress_cb=progress_cb,
+                format_selector=fmt,  # نیاز دارد download_youtube_temp این را پشتیبانی کند [web:610]
+            )
+        except Exception as e:
+            if _looks_like_no_requested_format(e):
+                await _safe_send(
+                    context,
+                    f"⚠️ آیتم #{item_id}: این ویدیو 4K/1080 ندارد.\n"
+                    f"لینک: {url}\n"
+                    f"بگو با چه کیفیتی دانلود کنم (مرحله بعد دکمه انتخاب کیفیت را اضافه می‌کنیم)."
+                )
+                try:
+                    dbmod.mark_back_to_queue(con, item_id)
+                except Exception:
+                    pass
+                return
+            raise
+
+        # گزارش کیفیت دانلود شده (برای اطمینان)
+        await _safe_send(
+            context,
+            f"✅ دانلود تمام شد: #{item_id}\n🎞️ resolution={info.get('resolution')} format_id={info.get('format_id')}"
+        )
 
         up_title = title or (info.get("title") or f"item {item_id}")
         up_desc = desc
 
         await _safe_send(context, f"⬆️ شروع آپلود یوتیوب (public): #{item_id}\n📌 {up_title}")
-        resp = await asyncio.to_thread(
-            upload_video,
-            file_path,
-            up_title,
-            up_desc,
-            "public",
-        ) if False else upload_video(
+        resp = upload_video(
             file_path=file_path,
             title=up_title,
             description=up_desc,
@@ -163,7 +189,6 @@ async def _process_item(context, con, item_id: int, *, set_today_done: bool):
         await _safe_send(context, f"🎬 ✅ آپلود انجام شد: #{item_id}\nvideo_id={yt_id}\n⏱ {now_str}")
 
     except Exception as e:
-        # اگر شکست خورد، آیتم را برگردان به queued تا گیر نکند
         try:
             dbmod.mark_back_to_queue(con, item_id)
         except Exception:
