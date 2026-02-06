@@ -2,6 +2,7 @@ from telegram import Update
 from telegram.ext import ContextTypes
 from bot.config import ADMIN_GROUP_ID
 from bot.menus import main_menu
+from bot import menus
 
 def is_admin_group(update: Update) -> bool:
     chat = update.effective_chat
