@@ -7,6 +7,7 @@ from bot.config import BOT_TOKEN, DEFAULT_PUBLISH_TIME_IR, DEFAULT_PRIVACY
 from shared import db as dbmod
 from bot.conversations.common import admin_only, go_main
 from bot.conversations import edit_item
+from bot.conversations import reorder_queue
 
 
 TIME_RE = re.compile(r"^([01]\d|2[0-3]):([0-5]\d)$")
@@ -23,6 +24,7 @@ def build_app(db_path: str):
     # Conversation: Add link
     app.add_handler(add_link.handler())
     app.add_handler(edit_item.handler())
+    app.add_handler(reorder_queue.handler())
 
     async def start(update, context):
         if not await admin_only(update, context):
