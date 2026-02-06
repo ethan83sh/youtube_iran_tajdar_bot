@@ -318,6 +318,8 @@ def build_app(db_path: str):
             return
 
         await go_main(update, context)
+    
+    return app
 
 
 async def publish_now(update, context):
