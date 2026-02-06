@@ -42,7 +42,8 @@ def migrate(con: sqlite3.Connection) -> None:
     _add_col_safe("queue_items", "manual_title", "TEXT")
     _add_col_safe("queue_items", "manual_desc", "TEXT")
     _add_col_safe("queue_items", "manual_thumb_file_id", "TEXT")
-
+    _add_col_safe("queue_items", "sort_order", "INTEGER")
+    
     # ordering
     _add_col_safe("queue_items", "sort_order", "INTEGER")
 
@@ -53,6 +54,8 @@ def migrate(con: sqlite3.Connection) -> None:
     WHERE sort_order IS NULL
     """)
 
+
+    
     con.commit()
 
 
@@ -92,9 +95,11 @@ def add_queue_item_link(con, url: str, title: str | None = None, description: st
 
 def list_queued(con, limit: int = 20):
     return con.execute(
-        "SELECT id, source_type, source_url, title, created_at FROM queue_items WHERE status='queued' ORDER BY sort_order ASC, id ASC LIMIT ?",
+        "SELECT id, source_type, source_url, title, created_at, sort_order FROM queue_items "
+        "WHERE status='queued' ORDER BY sort_order ASC, id ASC LIMIT ?",
         (limit,),
     ).fetchall()
+
 
 
 def delete_queue_item(con, item_id: int) -> None:
@@ -122,6 +127,25 @@ def update_queue_thumb_file_id(con, item_id: int, file_id: str):
         (file_id, item_id),
     )
     con.commit()
+
+def swap_queue_order(con, id1: int, id2: int) -> None:
+    r1 = con.execute("SELECT sort_order FROM queue_items WHERE id=? AND status='queued'", (id1,)).fetchone()
+    r2 = con.execute("SELECT sort_order FROM queue_items WHERE id=? AND status='queued'", (id2,)).fetchone()
+    if not r1 or not r2:
+        return
+    o1, o2 = r1["sort_order"], r2["sort_order"]
+    con.execute("BEGIN")
+    con.execute("UPDATE queue_items SET sort_order=? WHERE id=? AND status='queued'", (o2, id1))
+    con.execute("UPDATE queue_items SET sort_order=? WHERE id=? AND status='queued'", (o1, id2))
+    con.execute("COMMIT")
+
+
+def list_queued_ids(con, limit: int = 100):
+    rows = con.execute(
+        "SELECT id FROM queue_items WHERE status='queued' ORDER BY sort_order ASC, id ASC LIMIT ?",
+        (limit,),
+    ).fetchall()
+    return [int(r["id"]) for r in rows]
 
 def swap_queue_order(con, id1: int, id2: int) -> None:
     r1 = con.execute("SELECT sort_order FROM queue_items WHERE id=? AND status='queued'", (id1,)).fetchone()
