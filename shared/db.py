@@ -87,3 +87,25 @@ def list_queued(con, limit: int = 20):
 def delete_queue_item(con, item_id: int) -> None:
     con.execute("DELETE FROM queue_items WHERE id=? AND status='queued'", (item_id,))
     con.commit()
+
+
+def get_queue_item(con, item_id: int):
+    return con.execute(
+        "SELECT * FROM queue_items WHERE id=? AND status='queued'",
+        (item_id,),
+    ).fetchone()
+
+def update_queue_title(con, item_id: int, title: str):
+    con.execute("UPDATE queue_items SET title=? WHERE id=? AND status='queued'", (title, item_id))
+    con.commit()
+
+def update_queue_desc(con, item_id: int, desc: str):
+    con.execute("UPDATE queue_items SET description=? WHERE id=? AND status='queued'", (desc, item_id))
+    con.commit()
+
+def update_queue_thumb_file_id(con, item_id: int, file_id: str):
+    con.execute(
+        "UPDATE queue_items SET thumb_mode='custom', manual_thumb_file_id=? WHERE id=? AND status='queued'",
+        (file_id, item_id),
+    )
+    con.commit()
