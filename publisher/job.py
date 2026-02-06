@@ -40,17 +40,26 @@ def _row_to_dict(it):
     return {}
 
 
+def _pick_url(it: dict) -> str:
+    # برای سازگاری با اسکیمای مختلف DB
+    return (it.get("source_url") or it.get("url") or it.get("link") or "").strip()
+
+
 async def _process_item(context, con, item_id: int, *, set_today_done: bool):
     now_str = _now_str_ir()
     today = _today_ir()
 
     it = _row_to_dict(dbmod.get_queue_item(con, item_id))
+
+    # DEBUG موقت: کلیدهای رکورد را ببینیم (بعداً حذفش می‌کنیم)
+    await _safe_send(context, f"DEBUG keys for #{item_id}: {list(it.keys())}")
+
     title = (it.get("title") or "").strip()
-    url = (it.get("source_url") or "").strip()
+    url = _pick_url(it)
     desc = (it.get("description") or "").strip()
 
     if not url:
-        await _safe_send(context, f"❌ آیتم #{item_id} لینک ندارد (source_url خالی است).")
+        await _safe_send(context, f"❌ آیتم #{item_id} لینک ندارد (source_url/url/link خالی است).")
         if set_today_done:
             dbmod.set_last_publish_day(con, today)
         return
