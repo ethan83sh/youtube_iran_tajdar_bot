@@ -99,11 +99,26 @@ def queue_item_kb(item_id: int):
         [InlineKeyboardButton("✏️ ادیت تیتر", callback_data=f"{CB_QUEUE_ITEM_EDIT_TITLE}{item_id}")],
         [InlineKeyboardButton("📝 ادیت دیسکریپشن", callback_data=f"{CB_QUEUE_ITEM_EDIT_DESC}{item_id}")],
         [InlineKeyboardButton("🖼 تغییر پوستر", callback_data=f"{CB_QUEUE_ITEM_EDIT_THUMB}{item_id}")],
+        [InlineKeyboardButton("🔀 تغییر ترتیب در صف", callback_data=f"QUEUE_REORDER:{item_id}")],
         [InlineKeyboardButton("🗑 حذف از صف", callback_data=f"{CB_QUEUE_ITEM_DEL}{item_id}")],
         [InlineKeyboardButton("بازگشت ↩︎", callback_data=CB_QUEUE_REFRESH)],
         [InlineKeyboardButton("بازگشت به منو ↩︎", callback_data=CB_BACK)],
     ]
     return InlineKeyboardMarkup(rows)
 
+def queue_pick_position_kb(n: int):
+    # n = تعداد آیتم‌های صف
+    rows = []
+    row = []
+    for i in range(1, n + 1):
+        row.append(InlineKeyboardButton(str(i), callback_data=f"QUEUE_POS:{i}"))
+        if len(row) == 5:
+            rows.append(row)
+            row = []
+    if row:
+        rows.append(row)
+
+    rows.append([InlineKeyboardButton("کنسل ↩︎", callback_data=CB_CANCEL)])
+    return InlineKeyboardMarkup(rows)
 
 
