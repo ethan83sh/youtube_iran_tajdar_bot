@@ -62,8 +62,17 @@ def build_app(db_path: str):
 
         con2 = context.application.bot_data["db"]
         dbmod.set_publish_time_ir(con2, hhmm)
-        await go_main(update, context, f"✅ زمان انتشار ذخیره شد: {hhmm} (ایران)")
+        ok = ensure_daily_job(context.application)
+        if ok:
+            await go_main(update, context, f"✅ زمان انتشار ذخیره و اعمال شد: {hhmm} (ایران)")
+        else:
+            await go_main(update, context, f"✅ زمان انتشار ذخیره شد: {hhmm} (ایران) — JobQueue فعال نیست")
+        return
 
+        await go_main(update, context, f"✅ زمان انتشار ذخیره شد: {hhmm} (ایران)")
+    
+
+    
     async def add(update, context):
         # اختیاری: افزودن سریع با دستور
         if not await admin_only(update, context):
