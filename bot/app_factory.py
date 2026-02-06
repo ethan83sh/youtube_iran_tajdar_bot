@@ -1,7 +1,9 @@
+import logging
 import re
 from datetime import time
 from zoneinfo import ZoneInfo
 
+from telegram.error import BadRequest
 from telegram.ext import Application, CallbackQueryHandler, CommandHandler
 
 from bot import menus
@@ -10,9 +12,15 @@ from bot.conversations.common import admin_only, go_main
 from bot.conversations import add_link, edit_item, reorder_queue
 from publisher.job import daily_publisher
 from shared import db as dbmod
-from telegram.error import BadRequest
+
+logger = logging.getLogger(__name__)
 
 TIME_RE = re.compile(r"^([01]\d|2[0-3]):([0-5]\d)$")
+
+
+def _parse_hhmm(hhmm: str) -> tuple[int, int]:
+    hh, mm = hhmm.split(":")
+    return int(hh), int(mm)
 
 
 def build_app(db_path: str):
@@ -23,9 +31,29 @@ def build_app(db_path: str):
     dbmod.init_defaults(con, DEFAULT_PUBLISH_TIME_IR, DEFAULT_PRIVACY)
     app.bot_data["db"] = con
 
-    # Daily publisher 
-    app.bot_data["db"] = con
+    def ensure_daily_job(_app: Application) -> bool:
+        """(Re)create daily_publisher job using HH:MM stored in DB."""
+        if _app.job_queue is None:
+            return False
 
+        # Remove previous jobs with same name
+        for j in _app.job_queue.get_jobs_by_name("daily_publisher"):
+            j.schedule_removal()
+
+        con2 = _app.bot_data["db"]
+        hhmm = dbmod.get_publish_time_ir(con2)  # e.g. "17:00"
+        h, m = _parse_hhmm(hhmm)
+
+        tz = ZoneInfo("Asia/Tehran")
+        _app.job_queue.run_daily(
+            daily_publisher,
+            time=time(hour=h, minute=m, tzinfo=tz),
+            name="daily_publisher",
+        )
+        return True
+
+    # Create daily job on startup (reads from DB)
+    ensure_daily_job(app)
 
     # Conversations
     app.add_handler(add_link.handler())
@@ -62,19 +90,14 @@ def build_app(db_path: str):
 
         con2 = context.application.bot_data["db"]
         dbmod.set_publish_time_ir(con2, hhmm)
+
         ok = ensure_daily_job(context.application)
         if ok:
             await go_main(update, context, f"✅ زمان انتشار ذخیره و اعمال شد: {hhmm} (ایران)")
         else:
             await go_main(update, context, f"✅ زمان انتشار ذخیره شد: {hhmm} (ایران) — JobQueue فعال نیست")
-        return
 
-        await go_main(update, context, f"✅ زمان انتشار ذخیره شد: {hhmm} (ایران)")
-    
-
-    
     async def add(update, context):
-        # اختیاری: افزودن سریع با دستور
         if not await admin_only(update, context):
             return
         if not context.args:
@@ -87,7 +110,6 @@ def build_app(db_path: str):
         await go_main(update, context, f"✅ به صف اضافه شد: #{item_id}")
 
     async def delq(update, context):
-        # اختیاری: حذف سریع با دستور
         if not await admin_only(update, context):
             return
         if not context.args or len(context.args) != 1 or not context.args[0].isdigit():
@@ -102,16 +124,16 @@ def build_app(db_path: str):
     async def testjob(update, context):
         if not await admin_only(update, context):
             return
-    
+
         if context.application.job_queue is None:
-            await update.effective_message.reply_text("JobQueue فعال نیست (job-queue extra نصب نشده).")
+            await update.effective_message.reply_text('JobQueue فعال نیست (PTB را با "python-telegram-bot[job-queue]" نصب کن).')
             return
-    
+
         chat_id = update.effective_chat.id
-    
+
         async def _ping(ctx):
             await ctx.bot.send_message(chat_id=chat_id, text="✅ JobQueue OK — این پیام از run_once آمد.")
-    
+
         context.application.job_queue.run_once(_ping, when=10)
         await update.effective_message.reply_text("⏱ تست شروع شد: 10 ثانیه دیگه پیام میاد…")
 
@@ -121,17 +143,17 @@ def build_app(db_path: str):
         if context.application.job_queue is None:
             await update.effective_message.reply_text("JobQueue فعال نیست.")
             return
-    
+
         chat_id = update.effective_chat.id
         seconds = 120
         if context.args and context.args[0].isdigit():
             seconds = int(context.args[0])
-    
+
         async def _run(ctx):
             await ctx.bot.send_message(chat_id=chat_id, text=f"⏱ اجرای تست daily_publisher بعد از {seconds} ثانیه…")
             await daily_publisher(ctx)
             await ctx.bot.send_message(chat_id=chat_id, text="✅ daily_publisher اجرا شد (تست زمان‌بندی).")
-    
+
         context.application.job_queue.run_once(_run, when=seconds, name="test_daily_once")
         await update.effective_message.reply_text(f"ثبت شد. {seconds} ثانیه دیگه اجرا میشه.")
 
@@ -142,7 +164,7 @@ def build_app(db_path: str):
         if jq is None:
             await update.effective_message.reply_text("JobQueue فعال نیست.")
             return
-    
+
         daily = jq.get_jobs_by_name("daily_publisher")
         test = jq.get_jobs_by_name("test_daily_once")
         await update.effective_message.reply_text(
@@ -150,35 +172,6 @@ def build_app(db_path: str):
             f"test_daily_once jobs: {len(test)}"
         )
 
-    def _parse_hhmm(hhmm: str):
-        hh, mm = hhmm.split(":")
-        return int(hh), int(mm)
-
-
-    def ensure_daily_job(app):
-        # اگر JobQueue فعال نبود، هیچ کاری نکن
-        if app.job_queue is None:
-            return False
-    
-        # هر Job قبلی با همین نام را پاک کن
-        for j in app.job_queue.get_jobs_by_name("daily_publisher"):
-            j.schedule_removal()
-    
-        # زمان را از DB بخوان
-        con = app.bot_data["db"]
-        hhmm = dbmod.get_publish_time_ir(con)  # مثل "17:00"
-        h, m = _parse_hhmm(hhmm)
-    
-        tz = ZoneInfo("Asia/Tehran")
-        app.job_queue.run_daily(
-            daily_publisher,
-            time=time(hour=h, minute=m, tzinfo=tz),
-            name="daily_publisher",
-        )
-        return True
-
-
-    
     async def on_click(update, context):
         if not await admin_only(update, context):
             return
@@ -186,32 +179,43 @@ def build_app(db_path: str):
         q = update.callback_query
         data = q.data or ""
 
+        # Always try to answer callback quickly; ignore if too old
         try:
             await q.answer()
-        except Exception:
-            pass
+        except BadRequest as e:
+            if "Query is too old" not in str(e):
+                raise
 
         # Cancel / Back
         if data in (menus.CB_CANCEL, menus.CB_BACK):
             await go_main(update, context)
             return
 
-        # Add video (later)
         if data == menus.CB_ADD_VIDEO:
-            await q.edit_message_text(
-                "مرحله «اضافه کردن ویدیو» در گام بعد فعال می‌شود.",
-                reply_markup=menus.back_main_kb(),
-            )
+            try:
+                await q.edit_message_text(
+                    "مرحله «اضافه کردن ویدیو» در گام بعد فعال می‌شود.",
+                    reply_markup=menus.back_main_kb(),
+                )
+            except BadRequest as e:
+                if "Message is not modified" in str(e):
+                    return
+                raise
             return
 
         # Queue list
-        if data == menus.CB_QUEUE or data == menus.CB_QUEUE_REFRESH:
+        if data in (menus.CB_QUEUE, menus.CB_QUEUE_REFRESH):
             con2 = context.application.bot_data["db"]
             rows = dbmod.list_queued(con2, limit=30)
-            if not rows:
-                await q.edit_message_text("صف خالی است.", reply_markup=menus.back_main_kb())
-                return
-            await q.edit_message_text("📥 صف انتشار (روی هر آیتم بزن):", reply_markup=menus.queue_list_kb(rows))
+            try:
+                if not rows:
+                    await q.edit_message_text("صف خالی است.", reply_markup=menus.back_main_kb())
+                else:
+                    await q.edit_message_text("📥 صف انتشار (روی هر آیتم بزن):", reply_markup=menus.queue_list_kb(rows))
+            except BadRequest as e:
+                if "Message is not modified" in str(e):
+                    return
+                raise
             return
 
         # Full view
@@ -221,12 +225,17 @@ def build_app(db_path: str):
             con2 = context.application.bot_data["db"]
             it = dbmod.get_queue_item(con2, item_id)
             if not it:
-                await q.edit_message_text("این آیتم پیدا نشد یا از صف حذف شده.", reply_markup=menus.back_main_kb())
+                try:
+                    await q.edit_message_text("این آیتم پیدا نشد یا از صف حذف شده.", reply_markup=menus.back_main_kb())
+                except BadRequest as e:
+                    if "Message is not modified" in str(e):
+                        return
+                    raise
                 return
 
-            title = (it["title"] or "").strip()
-            desc = (it["description"] or "").strip()
-            url = (it["source_url"] or "").strip()
+            title = (it.get("title") or "").strip()
+            desc = (it.get("description") or "").strip()
+            url = (it.get("source_url") or "").strip()
 
             text = (
                 f"👁 مشاهده کامل — آیتم #{item_id}\n\n"
@@ -234,14 +243,24 @@ def build_app(db_path: str):
                 f"📝 دیسکریپشن:\n{desc[:1500]}\n\n"
                 f"🔗 لینک:\n{url}"
             )
-            await q.edit_message_text(text, reply_markup=menus.queue_item_kb(item_id))
+            try:
+                await q.edit_message_text(text, reply_markup=menus.queue_item_kb(item_id))
+            except BadRequest as e:
+                if "Message is not modified" in str(e):
+                    return
+                raise
             return
 
         # Select item
         m = re.match(r"^QUEUE_ITEM:(\d+)$", data)
         if m:
             item_id = int(m.group(1))
-            await q.edit_message_text(f"آیتم انتخاب شد: #{item_id}", reply_markup=menus.queue_item_kb(item_id))
+            try:
+                await q.edit_message_text(f"آیتم انتخاب شد: #{item_id}", reply_markup=menus.queue_item_kb(item_id))
+            except BadRequest as e:
+                if "Message is not modified" in str(e):
+                    return
+                raise
             return
 
         # Delete item
@@ -252,28 +271,48 @@ def build_app(db_path: str):
             dbmod.delete_queue_item(con2, item_id)
 
             rows = dbmod.list_queued(con2, limit=30)
-            if not rows:
-                await q.edit_message_text("✅ حذف شد. صف خالی است.", reply_markup=menus.back_main_kb())
-                return
-            await q.edit_message_text("✅ حذف شد. صف فعلی:", reply_markup=menus.queue_list_kb(rows))
+            try:
+                if not rows:
+                    await q.edit_message_text("✅ حذف شد. صف خالی است.", reply_markup=menus.back_main_kb())
+                else:
+                    await q.edit_message_text("✅ حذف شد. صف فعلی:", reply_markup=menus.queue_list_kb(rows))
+            except BadRequest as e:
+                if "Message is not modified" in str(e):
+                    return
+                raise
             return
 
         # Publish time menu
         if data == menus.CB_TIME:
-            await q.edit_message_text("زمان انتشار:", reply_markup=menus.time_menu())
+            try:
+                await q.edit_message_text("زمان انتشار:", reply_markup=menus.time_menu())
+            except BadRequest as e:
+                if "Message is not modified" in str(e):
+                    return
+                raise
             return
 
         if data == menus.CB_TIME_VIEW:
             con2 = context.application.bot_data["db"]
             t = dbmod.get_publish_time_ir(con2)
-            await q.edit_message_text(f"زمان فعلی انتشار: {t} (به وقت ایران)", reply_markup=menus.time_menu())
+            try:
+                await q.edit_message_text(f"زمان فعلی انتشار: {t} (به وقت ایران)", reply_markup=menus.time_menu())
+            except BadRequest as e:
+                if "Message is not modified" in str(e):
+                    return
+                raise
             return
 
         if data == menus.CB_TIME_SET:
-            await q.edit_message_text(
-                "زمان جدید را با این دستور بفرست:\n/settime HH:MM\nمثلاً: /settime 17:00",
-                reply_markup=menus.time_menu(),
-            )
+            try:
+                await q.edit_message_text(
+                    "زمان جدید را با این دستور بفرست:\n/settime HH:MM\nمثلاً: /settime 17:00",
+                    reply_markup=menus.time_menu(),
+                )
+            except BadRequest as e:
+                if "Message is not modified" in str(e):
+                    return
+                raise
             return
 
         await go_main(update, context)
@@ -283,21 +322,21 @@ def build_app(db_path: str):
     app.add_handler(CommandHandler("settime", settime))
     app.add_handler(CommandHandler("add", add))
     app.add_handler(CommandHandler("delq", delq))
-    app.add_handler(CallbackQueryHandler(on_click))
     app.add_handler(CommandHandler("testjob", testjob))
     app.add_handler(CommandHandler("daily_in", daily_in))
     app.add_handler(CommandHandler("jobs", jobs))
-
+    app.add_handler(CallbackQueryHandler(on_click))
 
     async def error_handler(update, context):
         err = context.error
-        if isinstance(err, BadRequest) and "Query is too old" in str(err):
-            return
-        raise err  # یا لاگ کن
-    
+        # ignore known harmless callback issues
+        if isinstance(err, BadRequest):
+            msg = str(err)
+            if "Query is too old" in msg or "Message is not modified" in msg:
+                return
+        logger.exception("Unhandled exception while processing update", exc_info=err)
+        return
+
     app.add_error_handler(error_handler)
 
-
-
-    
     return app
