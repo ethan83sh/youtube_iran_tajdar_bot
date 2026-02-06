@@ -81,14 +81,14 @@ def build_app(db_path: str):
 
         q = update.callback_query
         await q.answer()
-        data = q.data
+        data = q.data or ""
 
+        # Cancel / Back
         if data in (menus.CB_CANCEL, menus.CB_BACK):
             await go_main(update, context)
             return
 
-
-
+        # Add video (later)
         if data == menus.CB_ADD_VIDEO:
             await q.edit_message_text(
                 "مرحله «اضافه کردن ویدیو» در گام بعد فعال می‌شود.",
@@ -96,27 +96,43 @@ def build_app(db_path: str):
             )
             return
 
-        if data == menus.CB_QUEUE:
+        # Queue list (button-based)
+        if data == menus.CB_QUEUE or data == menus.CB_QUEUE_REFRESH:
             con = context.application.bot_data["db"]
             rows = dbmod.list_queued(con, limit=30)
-
             if not rows:
                 await q.edit_message_text("صف خالی است.", reply_markup=menus.back_main_kb())
                 return
-
-            lines = ["📥 صف انتشار (منتشرنشده‌ها):\n"]
-            for r in rows:
-                title = (r["title"] or "").strip()
-                url = (r["source_url"] or "").strip()
-                short = title if title else url
-                if len(short) > 60:
-                    short = short[:57] + "..."
-                lines.append(f"#{r['id']} — {short}")
-
-            text = "\n".join(lines) + "\n\nبرای حذف: /delq ID  (مثلاً /delq 12)"
-            await q.edit_message_text(text, reply_markup=menus.back_main_kb())
+            await q.edit_message_text(
+                "📥 صف انتشار (روی هر آیتم بزن):",
+                reply_markup=menus.queue_list_kb(rows),
+            )
             return
 
+        m = re.match(r"^QUEUE_ITEM:(\d+)$", data)
+        if m:
+            item_id = int(m.group(1))
+            await q.edit_message_text(
+                f"آیتم انتخاب شد: #{item_id}",
+                reply_markup=menus.queue_item_kb(item_id),
+            )
+            return
+
+        m = re.match(r"^QUEUE_ITEM_DEL:(\d+)$", data)
+        if m:
+            item_id = int(m.group(1))
+            con = context.application.bot_data["db"]
+            dbmod.delete_queue_item(con, item_id)
+
+            rows = dbmod.list_queued(con, limit=30)
+            if not rows:
+                await q.edit_message_text("✅ حذف شد. صف خالی است.", reply_markup=menus.back_main_kb())
+                return
+
+            await q.edit_message_text("✅ حذف شد. صف فعلی:", reply_markup=menus.queue_list_kb(rows))
+            return
+
+        # Publish time menu
         if data == menus.CB_TIME:
             await q.edit_message_text("زمان انتشار:", reply_markup=menus.time_menu())
             return
@@ -138,6 +154,7 @@ def build_app(db_path: str):
             return
 
         await go_main(update, context)
+
 
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("whoami", whoami))
