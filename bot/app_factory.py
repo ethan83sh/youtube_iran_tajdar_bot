@@ -10,7 +10,7 @@ from bot.conversations.common import admin_only, go_main
 from bot.conversations import add_link, edit_item, reorder_queue
 from publisher.job import daily_publisher
 from shared import db as dbmod
-
+from telegram.error import BadRequest
 
 TIME_RE = re.compile(r"^([01]\d|2[0-3]):([0-5]\d)$")
 
@@ -287,4 +287,16 @@ def build_app(db_path: str):
     app.add_handler(CommandHandler("daily_in", daily_in))
     app.add_handler(CommandHandler("jobs", jobs))
 
+
+    async def error_handler(update, context):
+        err = context.error
+        if isinstance(err, BadRequest) and "Query is too old" in str(err):
+            return
+        raise err  # یا لاگ کن
+    
+    app.add_error_handler(error_handler)
+
+
+
+    
     return app
