@@ -4,12 +4,13 @@ import time
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.error import BadRequest
 
 from bot.config import ADMIN_GROUP_ID
 from shared import db as dbmod
 
-from downloader.ytdlp_downloader import download_youtube_temp
+from downloader.ytdlp_downloader import download_youtube_temp, probe_youtube_formats
 from uploader.youtube_uploader import upload_video
 
 TZ_IR = ZoneInfo("Asia/Tehran")
@@ -65,8 +66,7 @@ def _pick_url(it: dict) -> str:
 
 
 def _hires_format_selector() -> str:
-    # فقط 4K یا 1080: اول 2160، اگر نبود 1080
-    # bv = bestvideo, ba = bestaudio, b = best (single file fallback)
+    # فقط 4K یا 1080: اول 2160، اگر نبود 1080 [web:610]
     return (
         "bv*[height=2160]+ba/b[height=2160]/"
         "bv*[height=1080]+ba/b[height=1080]"
@@ -76,6 +76,40 @@ def _hires_format_selector() -> str:
 def _looks_like_no_requested_format(err: Exception) -> bool:
     s = str(err).lower()
     return ("requested format" in s and "not available" in s) or ("no video formats found" in s)
+
+
+def _get_pending_quality(context, item_id: int) -> int | None:
+    pending = context.application.bot_data.get("pending_quality") or {}
+    rec = pending.get(item_id) or {}
+    chosen = rec.get("chosen_height")
+    return int(chosen) if chosen else None
+
+
+def _set_pending_quality(context, item_id: int, *, url: str, heights: list[int]):
+    pending = context.application.bot_data.setdefault("pending_quality", {})
+    pending[item_id] = {"url": url, "heights": heights, "chosen_height": None}
+
+
+async def _ask_quality(context, item_id: int, url: str):
+    info0 = await asyncio.to_thread(probe_youtube_formats, url)
+    formats = info0.get("formats") or []
+
+    heights = sorted({f.get("height") for f in formats if f.get("height")}, reverse=True)
+    # گزینه‌های معقول: از بزرگ به کوچک، حداکثر 8 گزینه
+    heights = [int(h) for h in heights if int(h) <= 2160][:8]
+
+    if not heights:
+        await _safe_send(context, f"⚠️ آیتم #{item_id}: کیفیت قابل انتخاب پیدا نشد.\n{url}")
+        return
+
+    _set_pending_quality(context, item_id, url=url, heights=heights)
+
+    keyboard = [[InlineKeyboardButton(f"{h}p", callback_data=f"qpick:{item_id}:{h}")] for h in heights]
+    await context.bot.send_message(
+        ADMIN_GROUP_ID,
+        f"⚠️ آیتم #{item_id}: 4K/1080 موجود نیست.\nیکی از کیفیت‌های زیر را انتخاب کن:",
+        reply_markup=InlineKeyboardMarkup(keyboard),  # ساخت inline keyboard [web:705]
+    )
 
 
 async def _process_item(context, con, item_id: int, *, set_today_done: bool):
@@ -101,7 +135,6 @@ async def _process_item(context, con, item_id: int, *, set_today_done: bool):
     progress_msg_id = None
 
     try:
-        # پیام ثابت برای progress
         msg = await context.bot.send_message(ADMIN_GROUP_ID, f"⬇️ شروع دانلود: #{item_id}\n🔗 {url}")
         progress_msg_id = msg.message_id
 
@@ -109,7 +142,6 @@ async def _process_item(context, con, item_id: int, *, set_today_done: bool):
         last_edit = {"t": 0.0}
 
         def progress_cb(p: dict):
-            # این callback داخل thread دانلود اجرا می‌شود؛ پس باید thread-safe به loop پاس داده شود. [web:684]
             now = time.time()
             if now - last_edit["t"] < 7:
                 return
@@ -133,8 +165,11 @@ async def _process_item(context, con, item_id: int, *, set_today_done: bool):
                 lambda: asyncio.create_task(_safe_edit(context, progress_msg_id, text))
             )
 
-        # دانلود: فقط 4K یا 1080
-        fmt = _hires_format_selector()
+        chosen_height = _get_pending_quality(context, item_id)
+        if chosen_height:
+            fmt = f"bv*[height={chosen_height}]+ba/b[height={chosen_height}]"  # انتخاب بر اساس height [web:610]
+        else:
+            fmt = _hires_format_selector()
 
         try:
             info, file_path, tmpdir = await asyncio.to_thread(
@@ -142,16 +177,21 @@ async def _process_item(context, con, item_id: int, *, set_today_done: bool):
                 url,
                 f"item_{item_id}",
                 progress_cb=progress_cb,
-                format_selector=fmt,  # نیاز دارد download_youtube_temp این را پشتیبانی کند [web:610]
+                format_selector=fmt,
             )
         except Exception as e:
             if _looks_like_no_requested_format(e):
-                await _safe_send(
-                    context,
-                    f"⚠️ آیتم #{item_id}: این ویدیو 4K/1080 ندارد.\n"
-                    f"لینک: {url}\n"
-                    f"بگو با چه کیفیتی دانلود کنم (مرحله بعد دکمه انتخاب کیفیت را اضافه می‌کنیم)."
-                )
+                # اگر هنوز انتخاب نشده: دکمه‌ها را بفرست
+                if not chosen_height:
+                    await _ask_quality(context, item_id, url)
+                else:
+                    await _safe_send(
+                        context,
+                        f"⚠️ آیتم #{item_id}: کیفیت انتخاب‌شده ({chosen_height}p) موجود نیست.\n"
+                        f"دوباره یکی را انتخاب کن:\n{url}"
+                    )
+                    await _ask_quality(context, item_id, url)
+
                 try:
                     dbmod.mark_back_to_queue(con, item_id)
                 except Exception:
@@ -159,7 +199,6 @@ async def _process_item(context, con, item_id: int, *, set_today_done: bool):
                 return
             raise
 
-        # گزارش کیفیت دانلود شده (برای اطمینان)
         await _safe_send(
             context,
             f"✅ دانلود تمام شد: #{item_id}\n🎞️ resolution={info.get('resolution')} format_id={info.get('format_id')}"
@@ -177,7 +216,6 @@ async def _process_item(context, con, item_id: int, *, set_today_done: bool):
         )
         yt_id = (resp or {}).get("id")
 
-        # موفقیت: حذف از صف + ثبت امروز (فقط در daily)
         try:
             dbmod.delete_queue_item(con, item_id)
         except Exception:
@@ -193,7 +231,6 @@ async def _process_item(context, con, item_id: int, *, set_today_done: bool):
             dbmod.mark_back_to_queue(con, item_id)
         except Exception:
             pass
-
         await _safe_send(context, f"❌ خطا در پردازش آیتم #{item_id}: {type(e).__name__}: {e}")
         raise
 
@@ -225,11 +262,6 @@ async def daily_publisher(context):
 
 
 async def publish_one_item_now(context, item_id: int | None = None):
-    """
-    اجرای دستی:
-    - شرط last_publish_day را نادیده می‌گیرد
-    - اگر item_id ندادی، یکی از صف برمی‌دارد
-    """
     con = context.application.bot_data["db"]
 
     if item_id is None:
