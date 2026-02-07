@@ -104,5 +104,4 @@ def handler():
         name="reorder_queue_conv",
         per_chat=True,
         per_user=True,
-        per_message=True,
     )
