@@ -110,26 +110,30 @@ def time_menu() -> InlineKeyboardMarkup:
 # -----------------------------
 # Queue list + item menu
 # -----------------------------
-def queue_list_kb(items) -> InlineKeyboardMarkup:
-    """
-    items: iterable of rows/dicts with keys: id, title, source_url
-    """
+def queue_list_kb(items):
     rows = []
-
     for it in items:
-        item_id = it["id"]
-        title = (it.get("title") or it.get("source_url") or "").strip()
+        # sqlite3.Row از طریق [] و keys() قابل خوندنه، get نداره
+        title = ""
+        if it is not None:
+            if hasattr(it, "keys"):
+                # sqlite3.Row
+                title = ((it["title"] if "title" in it.keys() else "") or "").strip()
+                if not title:
+                    title = ((it["source_url"] if "source_url" in it.keys() else "") or "").strip()
+            else:
+                # dict-like
+                title = (it.get("title") or it.get("source_url") or "").strip()
+
         if len(title) > 40:
             title = title[:37] + "..."
 
-        # مهم: این callback_data همونیه که باید در on_click هندل بشه: ^QUEUE_ITEM:\d+$
-        rows.append(
-            [InlineKeyboardButton(f"#{item_id} — {title}", callback_data=f"{CB_QUEUE_ITEM}{item_id}")]
-        )
+        rows.append([InlineKeyboardButton(f"#{it['id']} — {title}", callback_data=f"{CB_QUEUE_ITEM}{it['id']}")])
 
     rows.append([InlineKeyboardButton("🔄 بروزرسانی", callback_data=CB_QUEUE_REFRESH)])
     rows.append([InlineKeyboardButton("بازگشت به منو ↩︎", callback_data=CB_BACK_MAIN)])
     return InlineKeyboardMarkup(rows)
+
 
 
 def queue_item_kb(item_id: int) -> InlineKeyboardMarkup:
