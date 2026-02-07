@@ -1,6 +1,6 @@
 import re
 from telegram import Update
-from telegram.ext import ConversationHandler, CallbackQueryHandler, ContextTypes
+from telegram.ext import ConversationHandler, CallbackQueryHandler, ContextTypes, CommandHandler
 
 from bot import menus
 from bot.conversations.common import admin_only, go_main
@@ -16,6 +16,7 @@ async def entry(update: Update, context: ContextTypes.DEFAULT_TYPE):
     q = update.callback_query
     await q.answer()
 
+    # raw string => \d+ (نه \\d+)
     m = re.match(r"^QUEUE_REORDER:(\d+)$", q.data or "")
     if not m:
         await go_main(update, context)
@@ -61,12 +62,15 @@ async def pick_pos(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if pos < 1 or pos > len(ids):
         await q.edit_message_text("جایگاه نامعتبر است.", reply_markup=menus.back_main_kb())
+        context.user_data.pop("reorder_item_id", None)
         return ConversationHandler.END
 
     target_id = int(ids[pos - 1])
 
     if target_id != item_id:
         dbmod.swap_queue_order(con, item_id, target_id)
+
+    context.user_data.pop("reorder_item_id", None)
 
     rows = dbmod.list_queued(con, limit=30)
     if not rows:
@@ -78,17 +82,25 @@ async def pick_pos(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    context.user_data.pop("reorder_item_id", None)
     await go_main(update, context, "کنسل شد. منوی اصلی:")
     return ConversationHandler.END
 
 
 def handler():
     return ConversationHandler(
-        entry_points=[CallbackQueryHandler(entry, pattern=r"^QUEUE_REORDER:\d+$")],
+        entry_points=[
+            CallbackQueryHandler(entry, pattern=r"^QUEUE_REORDER:\d+$"),
+        ],
         states={
-            S_PICK_POS: [CallbackQueryHandler(pick_pos, pattern=r"^QUEUE_POS:\d+$")],
+            S_PICK_POS: [
+                CallbackQueryHandler(pick_pos, pattern=r"^QUEUE_POS:\d+$"),
+            ],
         },
-        fallbacks=[CallbackQueryHandler(cancel, pattern=f"^{menus.CB_CANCEL}$")],
+        fallbacks=[
+            CallbackQueryHandler(cancel, pattern=f"^{menus.CB_CANCEL}$"),
+            CommandHandler("cancel", cancel),
+        ],
         name="reorder_queue_conv",
         per_chat=True,
         per_user=True,
