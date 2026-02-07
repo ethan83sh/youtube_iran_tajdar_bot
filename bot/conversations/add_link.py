@@ -1,11 +1,17 @@
 from telegram import Update
 from telegram.ext import (
-    ConversationHandler, CallbackQueryHandler, MessageHandler, ContextTypes, filters
+    ConversationHandler,
+    CallbackQueryHandler,
+    MessageHandler,
+    CommandHandler,
+    ContextTypes,
+    filters,
 )
+
 from bot import menus
 from bot.conversations.common import admin_only, go_main
-from shared import db as dbmod
 from bot.config import YOUTUBE_API_KEY
+from shared import db as dbmod
 from shared.youtube_public import extract_video_id, get_video, parse_iso8601_duration_to_seconds
 
 
@@ -17,17 +23,29 @@ S_WAIT_TITLE = 5
 S_DESC_CHOICE = 6
 S_WAIT_DESC = 7
 
-def _db(con):
-    return con
 
 async def entry(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await admin_only(update, context):
         return ConversationHandler.END
+
     q = update.callback_query
     await q.answer()
-    context.user_data.clear()
+
+    # فقط کلیدهای مربوط به همین مکالمه را پاک کن، نه همه user_data
+    context.user_data.pop("url", None)
+    context.user_data.pop("video_id", None)
+    context.user_data.pop("yt_title", None)
+    context.user_data.pop("yt_desc", None)
+    context.user_data.pop("thumb_mode", None)
+    context.user_data.pop("manual_thumb_file_id", None)
+    context.user_data.pop("title_mode", None)
+    context.user_data.pop("manual_title", None)
+    context.user_data.pop("desc_mode", None)
+    context.user_data.pop("manual_desc", None)
+
     await q.edit_message_text("لینک ویدیو یوتوب را بفرست:", reply_markup=menus.cancel_kb())
     return S_WAIT_URL
+
 
 async def got_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await admin_only(update, context):
@@ -49,7 +67,15 @@ async def got_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return S_WAIT_URL
 
-    item = get_video(YOUTUBE_API_KEY, vid)
+    try:
+        item = get_video(YOUTUBE_API_KEY, vid)
+    except Exception:
+        await update.effective_message.reply_text(
+            "❌ خطای شبکه/API در گرفتن اطلاعات ویدیو. دوباره تلاش کن.",
+            reply_markup=menus.cancel_kb(),
+        )
+        return S_WAIT_URL
+
     if not item:
         await update.effective_message.reply_text(
             "❌ ویدیو پیدا نشد یا API محدودیت داد.",
@@ -57,13 +83,13 @@ async def got_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return S_WAIT_URL
 
-    sn = item.get("snippet", {})
-    cd = item.get("contentDetails", {})
-    dur_s = parse_iso8601_duration_to_seconds(cd.get("duration", ""))
+    sn = item.get("snippet", {}) or {}
+    cd = item.get("contentDetails", {}) or {}
+    dur_s = parse_iso8601_duration_to_seconds(cd.get("duration", "") or "")
 
     if dur_s <= 180:
         await update.effective_message.reply_text(
-            f"⛔️ این ویدیو {dur_s} ثانیه است و زیر ۳ دقیقه محسوب می‌شود. وارد صف نشد.",
+            f"⛔️ این ویدیو {dur_s} ثانیه است و زیر ۳ دقیقه محسوب می‌شود. وارد صف نشد."
         )
         await go_main(update, context)
         return ConversationHandler.END
@@ -83,6 +109,7 @@ async def got_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def thumb_choice(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await admin_only(update, context):
         return ConversationHandler.END
+
     q = update.callback_query
     await q.answer()
 
@@ -99,20 +126,26 @@ async def thumb_choice(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await go_main(update, context)
     return ConversationHandler.END
 
+
 async def got_thumb(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await admin_only(update, context):
         return ConversationHandler.END
+
     if not update.effective_message.photo:
         await update.effective_message.reply_text("❌ باید عکس بفرستی.", reply_markup=menus.cancel_kb())
         return S_WAIT_THUMB
+
     file_id = update.effective_message.photo[-1].file_id
     context.user_data["manual_thumb_file_id"] = file_id
+
     await update.effective_message.reply_text("تیتر را چطور می‌خوای؟", reply_markup=menus.link_title_choice_kb())
     return S_TITLE_CHOICE
+
 
 async def title_choice(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await admin_only(update, context):
         return ConversationHandler.END
+
     q = update.callback_query
     await q.answer()
 
@@ -129,20 +162,25 @@ async def title_choice(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await go_main(update, context)
     return ConversationHandler.END
 
+
 async def got_title(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await admin_only(update, context):
         return ConversationHandler.END
+
     t = (update.effective_message.text or "").strip()
     if len(t) < 3:
         await update.effective_message.reply_text("❌ تیتر خیلی کوتاهه. دوباره بفرست.", reply_markup=menus.cancel_kb())
         return S_WAIT_TITLE
+
     context.user_data["manual_title"] = t
     await update.effective_message.reply_text("دیسکریپشن را چطور می‌خوای؟", reply_markup=menus.link_desc_choice_kb())
     return S_DESC_CHOICE
 
+
 async def desc_choice(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await admin_only(update, context):
         return ConversationHandler.END
+
     q = update.callback_query
     await q.answer()
 
@@ -158,27 +196,26 @@ async def desc_choice(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await go_main(update, context)
     return ConversationHandler.END
 
+
 async def got_desc(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await admin_only(update, context):
         return ConversationHandler.END
+
     d = (update.effective_message.text or "").strip()
     context.user_data["manual_desc"] = d
     return await _finalize(update, context)
 
+
 async def _finalize(update: Update, context: ContextTypes.DEFAULT_TYPE):
     con = context.application.bot_data["db"]
-    url = context.user_data["url"]
+    url = context.user_data.get("url")
+    if not url:
+        await go_main(update, context, "❌ خطا: لینک از حافظه پاک شده. دوباره از اول شروع کن.")
+        return ConversationHandler.END
 
     # title/desc نهایی
-    if context.user_data.get("title_mode") == "manual":
-        final_title = context.user_data.get("manual_title")
-    else:
-        final_title = context.user_data.get("yt_title")
-
-    if context.user_data.get("desc_mode") == "manual":
-        final_desc = context.user_data.get("manual_desc")
-    else:
-        final_desc = context.user_data.get("yt_desc")
+    final_title = context.user_data.get("manual_title") if context.user_data.get("title_mode") == "manual" else context.user_data.get("yt_title")
+    final_desc = context.user_data.get("manual_desc") if context.user_data.get("desc_mode") == "manual" else context.user_data.get("yt_desc")
 
     item_id = dbmod.add_queue_item_link(
         con,
@@ -187,7 +224,6 @@ async def _finalize(update: Update, context: ContextTypes.DEFAULT_TYPE):
         description=final_desc,
         thumb_mode=context.user_data.get("thumb_mode", "yt"),
     )
-
 
     # آپدیت ستون‌های جدید
     con.execute(
@@ -210,22 +246,37 @@ async def _finalize(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await go_main(update, context, f"✅ به صف اضافه شد: #{item_id}")
     return ConversationHandler.END
 
+
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await go_main(update, context, "کنسل شد. منوی اصلی:")
     return ConversationHandler.END
+
 
 def handler():
     return ConversationHandler(
         entry_points=[CallbackQueryHandler(entry, pattern=f"^{menus.CB_ADD_LINK}$")],
         states={
             S_WAIT_URL: [MessageHandler(filters.TEXT & ~filters.COMMAND, got_url)],
-            S_THUMB_CHOICE: [CallbackQueryHandler(thumb_choice)],
+
+            S_THUMB_CHOICE: [
+                CallbackQueryHandler(thumb_choice, pattern=f"^({menus.CB_LINK_THUMB_YT}|{menus.CB_LINK_THUMB_MANUAL})$"),
+            ],
             S_WAIT_THUMB: [MessageHandler(filters.PHOTO, got_thumb)],
-            S_TITLE_CHOICE: [CallbackQueryHandler(title_choice)],
+
+            S_TITLE_CHOICE: [
+                CallbackQueryHandler(title_choice, pattern=f"^({menus.CB_LINK_TITLE_YT}|{menus.CB_LINK_TITLE_MANUAL})$"),
+            ],
             S_WAIT_TITLE: [MessageHandler(filters.TEXT & ~filters.COMMAND, got_title)],
-            S_DESC_CHOICE: [CallbackQueryHandler(desc_choice)],
+
+            S_DESC_CHOICE: [
+                CallbackQueryHandler(desc_choice, pattern=f"^({menus.CB_LINK_DESC_YT}|{menus.CB_LINK_DESC_MANUAL})$"),
+            ],
             S_WAIT_DESC: [MessageHandler(filters.TEXT & ~filters.COMMAND, got_desc)],
         },
-        fallbacks=[CallbackQueryHandler(cancel, pattern=f"^{menus.CB_CANCEL}$")],
+        fallbacks=[
+            CallbackQueryHandler(cancel, pattern=f"^{menus.CB_CANCEL}$"),
+            CommandHandler("cancel", cancel),
+        ],
         name="add_link_conv",
+        per_message=True,
     )
