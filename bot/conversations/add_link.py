@@ -278,5 +278,4 @@ def handler():
             CommandHandler("cancel", cancel),
         ],
         name="add_link_conv",
-        per_message=True,
     )
