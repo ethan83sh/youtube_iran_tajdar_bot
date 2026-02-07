@@ -156,5 +156,4 @@ def handler():
             CommandHandler("cancel", cancel),
         ],
         name="edit_item_conv",
-        per_message=True,
     )
