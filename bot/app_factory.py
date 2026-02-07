@@ -10,7 +10,7 @@ from bot import menus
 from bot.config import BOT_TOKEN, DEFAULT_PUBLISH_TIME_IR, DEFAULT_PRIVACY
 from bot.conversations.common import admin_only, go_main
 from bot.conversations import add_link, edit_item, reorder_queue
-from bot.quality_callbacks import on_pick_quality_callback  # NEW
+from bot.quality_callbacks import on_pick_quality_callback
 from publisher.job import daily_publisher, publish_one_item_now
 from shared import db as dbmod
 
@@ -53,10 +53,11 @@ def build_app(db_path: str):
 
     ensure_daily_job(app)
 
-    # Conversations
-    app.add_handler(add_link.handler())
-    app.add_handler(edit_item.handler())
-    app.add_handler(reorder_queue.handler())
+    # ---- Conversations (باید اولویت بالاتر داشته باشند) ----
+    # group=0 یعنی قبل از هندلرهای عمومی بررسی می‌شوند [web:740]
+    app.add_handler(add_link.handler(), group=0)
+    app.add_handler(edit_item.handler(), group=0)
+    app.add_handler(reorder_queue.handler(), group=0)
 
     async def start(update, context):
         if not await admin_only(update, context):
@@ -190,6 +191,11 @@ def build_app(db_path: str):
             if "Query is too old" not in str(e):
                 raise
 
+        if data.startswith("qpick:"):
+            # این نباید اینجا بیاد چون handler خودش جداست،
+            # ولی برای اطمینان مانع تداخل می‌شیم.
+            return
+
         if data in (menus.CB_CANCEL, menus.CB_BACK):
             await go_main(update, context)
             return
@@ -269,20 +275,20 @@ def build_app(db_path: str):
                 return
         logger.exception("Unhandled exception while processing update", exc_info=err)
 
-    # ثبت handlerها (مهم: قبل از return)
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("whoami", whoami))
-    app.add_handler(CommandHandler("settime", settime))
-    app.add_handler(CommandHandler("add", add))
-    app.add_handler(CommandHandler("delq", delq))
-    app.add_handler(CommandHandler("testjob", testjob))
-    app.add_handler(CommandHandler("daily_in", daily_in))
-    app.add_handler(CommandHandler("jobs", jobs))
-    app.add_handler(CommandHandler("publish_now", publish_now))
+    # ---- Commands (گروه عادی) ----
+    app.add_handler(CommandHandler("start", start), group=1)
+    app.add_handler(CommandHandler("whoami", whoami), group=1)
+    app.add_handler(CommandHandler("settime", settime), group=1)
+    app.add_handler(CommandHandler("add", add), group=1)
+    app.add_handler(CommandHandler("delq", delq), group=1)
+    app.add_handler(CommandHandler("testjob", testjob), group=1)
+    app.add_handler(CommandHandler("daily_in", daily_in), group=1)
+    app.add_handler(CommandHandler("jobs", jobs), group=1)
+    app.add_handler(CommandHandler("publish_now", publish_now), group=1)
 
-    # NEW: اول handler کیفیت، بعد on_click عمومی
-    app.add_handler(CallbackQueryHandler(on_pick_quality_callback, pattern=r"^qpick:"))  # [web:714]
-    app.add_handler(CallbackQueryHandler(on_click))
+    # ---- Callback ها (گروه عادی) ----
+    app.add_handler(CallbackQueryHandler(on_pick_quality_callback, pattern=r"^qpick:"), group=1)  # [web:714]
+    app.add_handler(CallbackQueryHandler(on_click), group=1)
 
     app.add_error_handler(error_handler)
 
