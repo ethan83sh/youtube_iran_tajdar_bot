@@ -53,8 +53,7 @@ def build_app(db_path: str):
 
     ensure_daily_job(app)
 
-    # ---- Conversations (باید اولویت بالاتر داشته باشند) ----
-    # group=0 یعنی قبل از هندلرهای عمومی بررسی می‌شوند [web:740]
+    # Conversations (اولویت بالاتر)
     app.add_handler(add_link.handler(), group=0)
     app.add_handler(edit_item.handler(), group=0)
     app.add_handler(reorder_queue.handler(), group=0)
@@ -183,6 +182,9 @@ def build_app(db_path: str):
             return
 
         q = update.callback_query
+        if not q:
+            return
+
         data = q.data or ""
 
         try:
@@ -191,12 +193,12 @@ def build_app(db_path: str):
             if "Query is too old" not in str(e):
                 raise
 
+        # این نباید اینجا بیاد چون handler خودش جداست
         if data.startswith("qpick:"):
-            # این نباید اینجا بیاد چون handler خودش جداست،
-            # ولی برای اطمینان مانع تداخل می‌شیم.
             return
 
-        if data in (menus.CB_CANCEL, menus.CB_BACK):
+        # FIX: CB_BACK وجود ندارد، باید CB_BACK_MAIN باشد
+        if data in (menus.CB_CANCEL, menus.CB_BACK_MAIN):
             await go_main(update, context)
             return
 
@@ -214,6 +216,30 @@ def build_app(db_path: str):
                 raise
             return
 
+        # FIX: کلیک روی آیتم‌های لیست صف -> QUEUE_ITEM:<id>
+        m = re.match(r"^QUEUE_ITEM:(\d+)$", data)
+        if m:
+            item_id = int(m.group(1))
+            con2 = context.application.bot_data["db"]
+            it = dbmod.get_queue_item(con2, item_id)
+            if not it:
+                await q.edit_message_text("این آیتم پیدا نشد یا از صف حذف شده.", reply_markup=menus.back_main_kb())
+                return
+
+            title = ((it["title"] if "title" in it.keys() else "") or "").strip()
+            desc = ((it["description"] if "description" in it.keys() else "") or "").strip()
+            url = ((it["source_url"] if "source_url" in it.keys() else "") or "").strip()
+
+            text = (
+                f"📌 آیتم #{item_id}\n\n"
+                f"📌 تیتر:\n{title}\n\n"
+                f"📝 دیسکریپشن:\n{desc[:1500]}\n\n"
+                f"🔗 لینک:\n{url}"
+            )
+            await q.edit_message_text(text, reply_markup=menus.queue_item_kb(item_id))
+            return
+
+        # FIX: regex ها باید \d+ باشند نه \\d+
         m = re.match(r"^QUEUE_ITEM_VIEW:(\d+)$", data)
         if m:
             item_id = int(m.group(1))
@@ -275,7 +301,7 @@ def build_app(db_path: str):
                 return
         logger.exception("Unhandled exception while processing update", exc_info=err)
 
-    # ---- Commands (گروه عادی) ----
+    # Commands
     app.add_handler(CommandHandler("start", start), group=1)
     app.add_handler(CommandHandler("whoami", whoami), group=1)
     app.add_handler(CommandHandler("settime", settime), group=1)
@@ -286,7 +312,7 @@ def build_app(db_path: str):
     app.add_handler(CommandHandler("jobs", jobs), group=1)
     app.add_handler(CommandHandler("publish_now", publish_now), group=1)
 
-    # ---- Callback ها (گروه عادی) ----
+    # Callback ها
     app.add_handler(CallbackQueryHandler(on_pick_quality_callback, pattern=r"^qpick:"), group=1)  # [web:714]
     app.add_handler(CallbackQueryHandler(on_click), group=1)
 
