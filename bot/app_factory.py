@@ -16,7 +16,7 @@ from shared import db as dbmod
 
 logger = logging.getLogger(__name__)
 
-TIME_RE = re.compile(r"^([01]\d|2[0-3]):([0-5]\d)$")
+TIME_RE = re.compile(r"^([01]\\d|2[0-3]):([0-5]\\d)$")
 
 
 def _parse_hhmm(hhmm: str) -> tuple[int, int]:
@@ -70,7 +70,7 @@ def build_app(db_path: str):
             return
         m = await context.bot.get_chat_member(chat.id, user.id)
         await update.effective_message.reply_text(
-            f"chat_id={chat.id}\nuser_id={user.id}\nstatus={m.status}"
+            f"chat_id={chat.id}\\nuser_id={user.id}\\nstatus={m.status}"
         )
 
     async def settime(update, context):
@@ -166,7 +166,7 @@ def build_app(db_path: str):
         daily = jq.get_jobs_by_name("daily_publisher")
         test = jq.get_jobs_by_name("test_daily_once")
         await update.effective_message.reply_text(
-            f"daily_publisher jobs: {len(daily)}\n"
+            f"daily_publisher jobs: {len(daily)}\\n"
             f"test_daily_once jobs: {len(test)}"
         )
 
@@ -193,6 +193,11 @@ def build_app(db_path: str):
             if "Query is too old" not in str(e):
                 raise
 
+        # --- FIX: اجازه بده entry_point کانورسیشن‌ها کار خودشان را بکنند ---
+        # اگر اینجا دست بزنیم، ConversationHandler (group=0) عملاً شروع نمی‌شود.
+        if data in (menus.CB_ADD_LINK, menus.CB_ADD_VIDEO):
+            return
+
         # این نباید اینجا بیاد چون handler خودش جداست
         if data.startswith("qpick:"):
             return
@@ -216,7 +221,7 @@ def build_app(db_path: str):
                 raise
             return
 
-        # FIX: کلیک روی آیتم‌های لیست صف -> QUEUE_ITEM:<id>
+        # FIX: regex ها داخل raw-string باید \d+ باشند (نه \\d+)
         m = re.match(r"^QUEUE_ITEM:(\d+)$", data)
         if m:
             item_id = int(m.group(1))
@@ -231,15 +236,14 @@ def build_app(db_path: str):
             url = ((it["source_url"] if "source_url" in it.keys() else "") or "").strip()
 
             text = (
-                f"📌 آیتم #{item_id}\n\n"
-                f"📌 تیتر:\n{title}\n\n"
-                f"📝 دیسکریپشن:\n{desc[:1500]}\n\n"
-                f"🔗 لینک:\n{url}"
+                f"📌 آیتم #{item_id}\\n\\n"
+                f"📌 تیتر:\\n{title}\\n\\n"
+                f"📝 دیسکریپشن:\\n{desc[:1500]}\\n\\n"
+                f"🔗 لینک:\\n{url}"
             )
             await q.edit_message_text(text, reply_markup=menus.queue_item_kb(item_id))
             return
 
-        # FIX: regex ها باید \d+ باشند نه \\d+
         m = re.match(r"^QUEUE_ITEM_VIEW:(\d+)$", data)
         if m:
             item_id = int(m.group(1))
@@ -254,10 +258,10 @@ def build_app(db_path: str):
             url = ((it["source_url"] if "source_url" in it.keys() else "") or "").strip()
 
             text = (
-                f"👁 مشاهده کامل — آیتم #{item_id}\n\n"
-                f"📌 تیتر:\n{title}\n\n"
-                f"📝 دیسکریپشن:\n{desc[:1500]}\n\n"
-                f"🔗 لینک:\n{url}"
+                f"👁 مشاهده کامل — آیتم #{item_id}\\n\\n"
+                f"📌 تیتر:\\n{title}\\n\\n"
+                f"📝 دیسکریپشن:\\n{desc[:1500]}\\n\\n"
+                f"🔗 لینک:\\n{url}"
             )
             await q.edit_message_text(text, reply_markup=menus.queue_item_kb(item_id))
             return
@@ -286,7 +290,7 @@ def build_app(db_path: str):
 
         if data == menus.CB_TIME_SET:
             await q.edit_message_text(
-                "زمان جدید را با این دستور بفرست:\n/settime HH:MM\nمثلاً: /settime 17:00",
+                "زمان جدید را با این دستور بفرست:\\n/settime HH:MM\\nمثلاً: /settime 17:00",
                 reply_markup=menus.time_menu(),
             )
             return
