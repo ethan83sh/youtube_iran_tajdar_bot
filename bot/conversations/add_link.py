@@ -13,6 +13,8 @@ from bot.conversations.common import admin_only, go_main
 from bot.config import YOUTUBE_API_KEY
 from shared import db as dbmod
 from shared.youtube_public import extract_video_id, get_video, parse_iso8601_duration_to_seconds
+import logging
+logger = logging.getLogger(__name__)
 
 
 S_WAIT_URL = 1
@@ -46,6 +48,10 @@ async def entry(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await q.edit_message_text("لینک ویدیو یوتوب را بفرست:", reply_markup=menus.cancel_kb())
     return S_WAIT_URL
 
+logger.warning("ADD_LINK entry reached: chat=%s user=%s data=%s",
+               update.effective_chat.id if update.effective_chat else None,
+               update.effective_user.id if update.effective_user else None,
+               update.callback_query.data if update.callback_query else None)
 
 async def got_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await admin_only(update, context):
