@@ -16,12 +16,26 @@ from shared import db as dbmod
 
 logger = logging.getLogger(__name__)
 
-TIME_RE = re.compile(r"^([01]\\d|2[0-3]):([0-5]\\d)$")
+# FIX: در raw-string فقط یک \ لازم است
+TIME_RE = re.compile(r"^([01]\d|2[0-3]):([0-5]\d)$")
 
 
 def _parse_hhmm(hhmm: str) -> tuple[int, int]:
     hh, mm = hhmm.split(":")
     return int(hh), int(mm)
+
+
+async def _safe_edit_or_reply(q, text: str, reply_markup=None):
+    """edit_message_text اگر fail شد، پیام جدید بفرست (برای جلوگیری از پرش/کرش)."""
+    try:
+        await q.edit_message_text(text, reply_markup=reply_markup)
+    except BadRequest as e:
+        msg = str(e)
+        if "Message is not modified" in msg:
+            return
+        logger.warning("edit_message_text failed: %s", e)
+        if q.message:
+            await q.message.reply_text(text, reply_markup=reply_markup)
 
 
 def build_app(db_path: str):
@@ -70,7 +84,7 @@ def build_app(db_path: str):
             return
         m = await context.bot.get_chat_member(chat.id, user.id)
         await update.effective_message.reply_text(
-            f"chat_id={chat.id}\\nuser_id={user.id}\\nstatus={m.status}"
+            f"chat_id={chat.id}\nuser_id={user.id}\nstatus={m.status}"
         )
 
     async def settime(update, context):
@@ -166,7 +180,7 @@ def build_app(db_path: str):
         daily = jq.get_jobs_by_name("daily_publisher")
         test = jq.get_jobs_by_name("test_daily_once")
         await update.effective_message.reply_text(
-            f"daily_publisher jobs: {len(daily)}\\n"
+            f"daily_publisher jobs: {len(daily)}\n"
             f"test_daily_once jobs: {len(test)}"
         )
 
@@ -186,6 +200,7 @@ def build_app(db_path: str):
             return
 
         data = q.data or ""
+        logger.warning("ON_CLICK data=%s", data)
 
         try:
             await q.answer()
@@ -193,16 +208,18 @@ def build_app(db_path: str):
             if "Query is too old" not in str(e):
                 raise
 
-        # --- FIX: اجازه بده entry_point کانورسیشن‌ها کار خودشان را بکنند ---
-        # اگر اینجا دست بزنیم، ConversationHandler (group=0) عملاً شروع نمی‌شود.
+        # اجازه بده ConversationHandlerها (group=0) این‌ها را هندل کنند
         if data in (menus.CB_ADD_LINK, menus.CB_ADD_VIDEO):
             return
+        if data.startswith(menus.CB_QUEUE_REORDER) or data.startswith(menus.CB_QUEUE_POS):
+            return
+        if data.startswith(menus.CB_QUEUE_ITEM_EDIT_TITLE) or data.startswith(menus.CB_QUEUE_ITEM_EDIT_DESC) or data.startswith(menus.CB_QUEUE_ITEM_EDIT_THUMB):
+            return
 
-        # این نباید اینجا بیاد چون handler خودش جداست
+        # کیفیت جداست
         if data.startswith("qpick:"):
             return
 
-        # FIX: CB_BACK وجود ندارد، باید CB_BACK_MAIN باشد
         if data in (menus.CB_CANCEL, menus.CB_BACK_MAIN):
             await go_main(update, context)
             return
@@ -210,25 +227,20 @@ def build_app(db_path: str):
         if data in (menus.CB_QUEUE, menus.CB_QUEUE_REFRESH):
             con2 = context.application.bot_data["db"]
             rows = dbmod.list_queued(con2, limit=30)
-            try:
-                if not rows:
-                    await q.edit_message_text("صف خالی است.", reply_markup=menus.back_main_kb())
-                else:
-                    await q.edit_message_text("📥 صف انتشار (روی هر آیتم بزن):", reply_markup=menus.queue_list_kb(rows))
-            except BadRequest as e:
-                if "Message is not modified" in str(e):
-                    return
-                raise
+            if not rows:
+                await _safe_edit_or_reply(q, "صف خالی است.", reply_markup=menus.back_main_kb())
+            else:
+                await _safe_edit_or_reply(q, "📥 صف انتشار (روی هر آیتم بزن):", reply_markup=menus.queue_list_kb(rows))
             return
 
-        # FIX: regex ها داخل raw-string باید \d+ باشند (نه \\d+)
+        # FIX: \d+ (نه \\d+)
         m = re.match(r"^QUEUE_ITEM:(\d+)$", data)
         if m:
             item_id = int(m.group(1))
             con2 = context.application.bot_data["db"]
             it = dbmod.get_queue_item(con2, item_id)
             if not it:
-                await q.edit_message_text("این آیتم پیدا نشد یا از صف حذف شده.", reply_markup=menus.back_main_kb())
+                await _safe_edit_or_reply(q, "این آیتم پیدا نشد یا از صف حذف شده.", reply_markup=menus.back_main_kb())
                 return
 
             title = ((it["title"] if "title" in it.keys() else "") or "").strip()
@@ -236,12 +248,12 @@ def build_app(db_path: str):
             url = ((it["source_url"] if "source_url" in it.keys() else "") or "").strip()
 
             text = (
-                f"📌 آیتم #{item_id}\\n\\n"
-                f"📌 تیتر:\\n{title}\\n\\n"
-                f"📝 دیسکریپشن:\\n{desc[:1500]}\\n\\n"
-                f"🔗 لینک:\\n{url}"
+                f"📌 آیتم #{item_id}\n\n"
+                f"📌 تیتر:\n{title}\n\n"
+                f"📝 دیسکریپشن:\n{desc[:1500]}\n\n"
+                f"🔗 لینک:\n{url}"
             )
-            await q.edit_message_text(text, reply_markup=menus.queue_item_kb(item_id))
+            await _safe_edit_or_reply(q, text, reply_markup=menus.queue_item_kb(item_id))
             return
 
         m = re.match(r"^QUEUE_ITEM_VIEW:(\d+)$", data)
@@ -250,7 +262,7 @@ def build_app(db_path: str):
             con2 = context.application.bot_data["db"]
             it = dbmod.get_queue_item(con2, item_id)
             if not it:
-                await q.edit_message_text("این آیتم پیدا نشد یا از صف حذف شده.", reply_markup=menus.back_main_kb())
+                await _safe_edit_or_reply(q, "این آیتم پیدا نشد یا از صف حذف شده.", reply_markup=menus.back_main_kb())
                 return
 
             title = ((it["title"] if "title" in it.keys() else "") or "").strip()
@@ -258,12 +270,12 @@ def build_app(db_path: str):
             url = ((it["source_url"] if "source_url" in it.keys() else "") or "").strip()
 
             text = (
-                f"👁 مشاهده کامل — آیتم #{item_id}\\n\\n"
-                f"📌 تیتر:\\n{title}\\n\\n"
-                f"📝 دیسکریپشن:\\n{desc[:1500]}\\n\\n"
-                f"🔗 لینک:\\n{url}"
+                f"👁 مشاهده کامل — آیتم #{item_id}\n\n"
+                f"📌 تیتر:\n{title}\n\n"
+                f"📝 دیسکریپشن:\n{desc[:1500]}\n\n"
+                f"🔗 لینک:\n{url}"
             )
-            await q.edit_message_text(text, reply_markup=menus.queue_item_kb(item_id))
+            await _safe_edit_or_reply(q, text, reply_markup=menus.queue_item_kb(item_id))
             return
 
         m = re.match(r"^QUEUE_ITEM_DEL:(\d+)$", data)
@@ -273,24 +285,25 @@ def build_app(db_path: str):
             dbmod.delete_queue_item(con2, item_id)
             rows = dbmod.list_queued(con2, limit=30)
             if not rows:
-                await q.edit_message_text("✅ حذف شد. صف خالی است.", reply_markup=menus.back_main_kb())
+                await _safe_edit_or_reply(q, "✅ حذف شد. صف خالی است.", reply_markup=menus.back_main_kb())
             else:
-                await q.edit_message_text("✅ حذف شد. صف فعلی:", reply_markup=menus.queue_list_kb(rows))
+                await _safe_edit_or_reply(q, "✅ حذف شد. صف فعلی:", reply_markup=menus.queue_list_kb(rows))
             return
 
         if data == menus.CB_TIME:
-            await q.edit_message_text("زمان انتشار:", reply_markup=menus.time_menu())
+            await _safe_edit_or_reply(q, "زمان انتشار:", reply_markup=menus.time_menu())
             return
 
         if data == menus.CB_TIME_VIEW:
             con2 = context.application.bot_data["db"]
             t = dbmod.get_publish_time_ir(con2)
-            await q.edit_message_text(f"زمان فعلی انتشار: {t} (به وقت ایران)", reply_markup=menus.time_menu())
+            await _safe_edit_or_reply(q, f"زمان فعلی انتشار: {t} (به وقت ایران)", reply_markup=menus.time_menu())
             return
 
         if data == menus.CB_TIME_SET:
-            await q.edit_message_text(
-                "زمان جدید را با این دستور بفرست:\\n/settime HH:MM\\nمثلاً: /settime 17:00",
+            await _safe_edit_or_reply(
+                q,
+                "زمان جدید را با این دستور بفرست:\n/settime HH:MM\nمثلاً: /settime 17:00",
                 reply_markup=menus.time_menu(),
             )
             return
@@ -317,7 +330,7 @@ def build_app(db_path: str):
     app.add_handler(CommandHandler("publish_now", publish_now), group=1)
 
     # Callback ها
-    app.add_handler(CallbackQueryHandler(on_pick_quality_callback, pattern=r"^qpick:"), group=1)  # [web:714]
+    app.add_handler(CallbackQueryHandler(on_pick_quality_callback, pattern=r"^qpick:"), group=1)
     app.add_handler(CallbackQueryHandler(on_click), group=1)
 
     app.add_error_handler(error_handler)
