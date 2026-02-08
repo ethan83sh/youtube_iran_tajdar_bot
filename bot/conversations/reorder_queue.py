@@ -1,12 +1,26 @@
 import re
+import logging
+
 from telegram import Update
+from telegram.error import BadRequest
 from telegram.ext import ConversationHandler, CallbackQueryHandler, ContextTypes, CommandHandler
 
 from bot import menus
 from bot.conversations.common import admin_only, go_main
 from shared import db as dbmod
 
+logger = logging.getLogger(__name__)
+
 S_PICK_POS = 1
+
+
+async def _safe_edit_or_reply(q, text: str, reply_markup=None):
+    try:
+        await q.edit_message_text(text, reply_markup=reply_markup)
+    except BadRequest as e:
+        logger.warning("reorder edit_message_text failed: %s", e)
+        if q.message:
+            await q.message.reply_text(text, reply_markup=reply_markup)
 
 
 async def entry(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -14,9 +28,16 @@ async def entry(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return ConversationHandler.END
 
     q = update.callback_query
-    await q.answer()
+    if not q:
+        return ConversationHandler.END
 
-    # raw string => \d+ (نه \\d+)
+    try:
+        await q.answer()
+    except BadRequest as e:
+        if "Query is too old" not in str(e):
+            raise
+
+    # FIX: raw string باید \d+ باشد نه \\d+
     m = re.match(r"^QUEUE_REORDER:(\d+)$", q.data or "")
     if not m:
         await go_main(update, context)
@@ -27,12 +48,13 @@ async def entry(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     ids = dbmod.list_queued_ids(con, limit=200)
     if item_id not in ids:
-        await q.edit_message_text("این آیتم در صف نیست یا حذف شده.", reply_markup=menus.back_main_kb())
+        await _safe_edit_or_reply(q, "این آیتم در صف نیست یا حذف شده.", reply_markup=menus.back_main_kb())
         return ConversationHandler.END
 
     context.user_data["reorder_item_id"] = item_id
 
-    await q.edit_message_text(
+    await _safe_edit_or_reply(
+        q,
         f"جایگاه جدید برای آیتم #{item_id} را انتخاب کن (با آیتم آن جایگاه جابجا می‌شود):",
         reply_markup=menus.queue_pick_position_kb(len(ids)),
     )
@@ -44,8 +66,16 @@ async def pick_pos(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return ConversationHandler.END
 
     q = update.callback_query
-    await q.answer()
+    if not q:
+        return ConversationHandler.END
 
+    try:
+        await q.answer()
+    except BadRequest as e:
+        if "Query is too old" not in str(e):
+            raise
+
+    # FIX: raw string باید \d+ باشد نه \\d+
     m = re.match(r"^QUEUE_POS:(\d+)$", q.data or "")
     if not m:
         await go_main(update, context)
@@ -61,7 +91,7 @@ async def pick_pos(update: Update, context: ContextTypes.DEFAULT_TYPE):
     ids = dbmod.list_queued_ids(con, limit=200)
 
     if pos < 1 or pos > len(ids):
-        await q.edit_message_text("جایگاه نامعتبر است.", reply_markup=menus.back_main_kb())
+        await _safe_edit_or_reply(q, "جایگاه نامعتبر است.", reply_markup=menus.back_main_kb())
         context.user_data.pop("reorder_item_id", None)
         return ConversationHandler.END
 
@@ -74,10 +104,10 @@ async def pick_pos(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     rows = dbmod.list_queued(con, limit=30)
     if not rows:
-        await q.edit_message_text("صف خالی است.", reply_markup=menus.back_main_kb())
+        await _safe_edit_or_reply(q, "صف خالی است.", reply_markup=menus.back_main_kb())
         return ConversationHandler.END
 
-    await q.edit_message_text("✅ ترتیب صف تغییر کرد. صف فعلی:", reply_markup=menus.queue_list_kb(rows))
+    await _safe_edit_or_reply(q, "✅ ترتیب صف تغییر کرد. صف فعلی:", reply_markup=menus.queue_list_kb(rows))
     return ConversationHandler.END
 
 
@@ -90,6 +120,7 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
 def handler():
     return ConversationHandler(
         entry_points=[
+            # FIX: pattern باید \d+ باشد نه \\d+
             CallbackQueryHandler(entry, pattern=r"^QUEUE_REORDER:\d+$"),
         ],
         states={
