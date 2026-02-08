@@ -121,17 +121,28 @@ async def got_thumb(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await admin_only(update, context):
         return ConversationHandler.END
 
-    if not update.effective_message.photo:
-        await update.effective_message.reply_text(
-            "❌ باید عکس بفرستی، یا اگر تامبنیل نمی‌خوای /skip را بفرست.",
+    msg = update.effective_message
+
+    file_id = None
+
+    # حالت 1: عکس واقعی (sendPhoto)
+    if msg.photo:
+        file_id = msg.photo[-1].file_id
+
+    # حالت 2: عکس به شکل فایل (sendDocument) با mimeType تصویری
+    elif msg.document and (msg.document.mime_type or "").startswith("image/"):
+        file_id = msg.document.file_id
+
+    if not file_id:
+        await msg.reply_text(
+            "❌ باید عکس بفرستی (یا به صورت Photo یا File). اگر تامبنیل نمی‌خوای /skip را بفرست.",
             reply_markup=menus.cancel_kb(),
         )
         return S_WAIT_THUMB
 
-    file_id = update.effective_message.photo[-1].file_id
     context.user_data["manual_thumb_file_id"] = file_id
-
     return await _finalize(update, context, has_manual_thumb=True)
+
 
 
 async def skip_thumb(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -201,9 +212,10 @@ def handler():
         states={
             S_WAIT_URL: [MessageHandler(filters.TEXT & ~filters.COMMAND, got_url)],
             S_WAIT_THUMB: [
-                MessageHandler(filters.PHOTO, got_thumb),
-                CommandHandler("skip", skip_thumb),
-            ],
+        MessageHandler(filters.PHOTO | filters.Document.IMAGE, got_thumb),
+        CommandHandler("skip", skip_thumb),
+    ],
+
         },
         fallbacks=[
             CallbackQueryHandler(cancel, pattern=f"^{menus.CB_CANCEL}$"),
