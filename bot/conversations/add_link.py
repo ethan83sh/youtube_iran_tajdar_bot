@@ -1,4 +1,7 @@
+import logging
+
 from telegram import Update
+from telegram.error import BadRequest
 from telegram.ext import (
     ConversationHandler,
     CallbackQueryHandler,
@@ -13,9 +16,8 @@ from bot.conversations.common import admin_only, go_main
 from bot.config import YOUTUBE_API_KEY
 from shared import db as dbmod
 from shared.youtube_public import extract_video_id, get_video, parse_iso8601_duration_to_seconds
-import logging
-logger = logging.getLogger(__name__)
 
+logger = logging.getLogger(__name__)
 
 S_WAIT_URL = 1
 S_THUMB_CHOICE = 2
@@ -31,27 +33,47 @@ async def entry(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return ConversationHandler.END
 
     q = update.callback_query
-    await q.answer()
+    if not q:
+        return ConversationHandler.END
+
+    logger.warning(
+        "ADD_LINK entry reached: chat=%s user=%s data=%s",
+        update.effective_chat.id if update.effective_chat else None,
+        update.effective_user.id if update.effective_user else None,
+        q.data,
+    )
+
+    try:
+        await q.answer()
+    except BadRequest as e:
+        # قدیمی بودن کوئری نباید کل flow را بخواباند
+        if "Query is too old" not in str(e):
+            raise
 
     # فقط کلیدهای مربوط به همین مکالمه را پاک کن، نه همه user_data
-    context.user_data.pop("url", None)
-    context.user_data.pop("video_id", None)
-    context.user_data.pop("yt_title", None)
-    context.user_data.pop("yt_desc", None)
-    context.user_data.pop("thumb_mode", None)
-    context.user_data.pop("manual_thumb_file_id", None)
-    context.user_data.pop("title_mode", None)
-    context.user_data.pop("manual_title", None)
-    context.user_data.pop("desc_mode", None)
-    context.user_data.pop("manual_desc", None)
+    for k in (
+        "url",
+        "video_id",
+        "yt_title",
+        "yt_desc",
+        "thumb_mode",
+        "manual_thumb_file_id",
+        "title_mode",
+        "manual_title",
+        "desc_mode",
+        "manual_desc",
+    ):
+        context.user_data.pop(k, None)
 
-    await q.edit_message_text("لینک ویدیو یوتوب را بفرست:", reply_markup=menus.cancel_kb())
+    # اگر پیام منو قابل ادیت نبود، پیام جدید بفرست
+    try:
+        await q.edit_message_text("لینک ویدیو یوتوب را بفرست:", reply_markup=menus.cancel_kb())
+    except BadRequest:
+        if q.message:
+            await q.message.reply_text("لینک ویدیو یوتوب را بفرست:", reply_markup=menus.cancel_kb())
+
     return S_WAIT_URL
 
-logger.warning("ADD_LINK entry reached: chat=%s user=%s data=%s",
-               update.effective_chat.id if update.effective_chat else None,
-               update.effective_user.id if update.effective_user else None,
-               update.callback_query.data if update.callback_query else None)
 
 async def got_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await admin_only(update, context):
@@ -117,7 +139,14 @@ async def thumb_choice(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return ConversationHandler.END
 
     q = update.callback_query
-    await q.answer()
+    if not q:
+        return ConversationHandler.END
+
+    try:
+        await q.answer()
+    except BadRequest as e:
+        if "Query is too old" not in str(e):
+            raise
 
     if q.data == menus.CB_LINK_THUMB_YT:
         context.user_data["thumb_mode"] = "yt"
@@ -153,7 +182,14 @@ async def title_choice(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return ConversationHandler.END
 
     q = update.callback_query
-    await q.answer()
+    if not q:
+        return ConversationHandler.END
+
+    try:
+        await q.answer()
+    except BadRequest as e:
+        if "Query is too old" not in str(e):
+            raise
 
     if q.data == menus.CB_LINK_TITLE_YT:
         context.user_data["title_mode"] = "yt"
@@ -188,7 +224,14 @@ async def desc_choice(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return ConversationHandler.END
 
     q = update.callback_query
-    await q.answer()
+    if not q:
+        return ConversationHandler.END
+
+    try:
+        await q.answer()
+    except BadRequest as e:
+        if "Query is too old" not in str(e):
+            raise
 
     if q.data == menus.CB_LINK_DESC_YT:
         context.user_data["desc_mode"] = "yt"
@@ -219,9 +262,16 @@ async def _finalize(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await go_main(update, context, "❌ خطا: لینک از حافظه پاک شده. دوباره از اول شروع کن.")
         return ConversationHandler.END
 
-    # title/desc نهایی
-    final_title = context.user_data.get("manual_title") if context.user_data.get("title_mode") == "manual" else context.user_data.get("yt_title")
-    final_desc = context.user_data.get("manual_desc") if context.user_data.get("desc_mode") == "manual" else context.user_data.get("yt_desc")
+    final_title = (
+        context.user_data.get("manual_title")
+        if context.user_data.get("title_mode") == "manual"
+        else context.user_data.get("yt_title")
+    )
+    final_desc = (
+        context.user_data.get("manual_desc")
+        if context.user_data.get("desc_mode") == "manual"
+        else context.user_data.get("yt_desc")
+    )
 
     item_id = dbmod.add_queue_item_link(
         con,
@@ -231,7 +281,6 @@ async def _finalize(update: Update, context: ContextTypes.DEFAULT_TYPE):
         thumb_mode=context.user_data.get("thumb_mode", "yt"),
     )
 
-    # آپدیت ستون‌های جدید
     con.execute(
         """
         UPDATE queue_items
@@ -262,20 +311,31 @@ def handler():
     return ConversationHandler(
         entry_points=[CallbackQueryHandler(entry, pattern=f"^{menus.CB_ADD_LINK}$")],
         states={
-            S_WAIT_URL: [MessageHandler(filters.TEXT & ~filters.COMMAND, got_url)],
+            S_WAIT_URL: [MessageHandler(filters.TEXT & ~filters.COMAND, got_url)]
+            if hasattr(filters, "COMAND")  # محافظت؛ اما عملاً این شاخه اجرا نمی‌شود
+            else [MessageHandler(filters.TEXT & ~filters.COMMAND, got_url)],
 
             S_THUMB_CHOICE: [
-                CallbackQueryHandler(thumb_choice, pattern=f"^({menus.CB_LINK_THUMB_YT}|{menus.CB_LINK_THUMB_MANUAL})$"),
+                CallbackQueryHandler(
+                    thumb_choice,
+                    pattern=f"^({menus.CB_LINK_THUMB_YT}|{menus.CB_LINK_THUMB_MANUAL})$",
+                ),
             ],
             S_WAIT_THUMB: [MessageHandler(filters.PHOTO, got_thumb)],
 
             S_TITLE_CHOICE: [
-                CallbackQueryHandler(title_choice, pattern=f"^({menus.CB_LINK_TITLE_YT}|{menus.CB_LINK_TITLE_MANUAL})$"),
+                CallbackQueryHandler(
+                    title_choice,
+                    pattern=f"^({menus.CB_LINK_TITLE_YT}|{menus.CB_LINK_TITLE_MANUAL})$",
+                ),
             ],
             S_WAIT_TITLE: [MessageHandler(filters.TEXT & ~filters.COMMAND, got_title)],
 
             S_DESC_CHOICE: [
-                CallbackQueryHandler(desc_choice, pattern=f"^({menus.CB_LINK_DESC_YT}|{menus.CB_LINK_DESC_MANUAL})$"),
+                CallbackQueryHandler(
+                    desc_choice,
+                    pattern=f"^({menus.CB_LINK_DESC_YT}|{menus.CB_LINK_DESC_MANUAL})$",
+                ),
             ],
             S_WAIT_DESC: [MessageHandler(filters.TEXT & ~filters.COMMAND, got_desc)],
         },
