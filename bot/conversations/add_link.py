@@ -77,8 +77,9 @@ async def entry(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def got_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await admin_only(update, context):
+        logger.warning("ADD_LINK got_url received: %r", (update.effective_message.text or ""))
         return ConversationHandler.END
-
+    
     url = (update.effective_message.text or "").strip()
     if "youtube.com" not in url and "youtu.be" not in url:
         await update.effective_message.reply_text(
@@ -88,6 +89,8 @@ async def got_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return S_WAIT_URL
 
     vid = extract_video_id(url)
+    logger.warning("ADD_LINK extracted video_id: %s", vid)
+
     if not vid:
         await update.effective_message.reply_text(
             "❌ نتونستم videoId رو از لینک دربیارم.",
